@@ -4,6 +4,7 @@ A lightweight Retrieval-Augmented Generation (RAG) application built with FastAP
 
 ## 🏗️ Architecture Overview
 
+
 ### Core Components
 
 ```
@@ -135,5 +136,12 @@ MONGODB_DB_NAME=minirag_db
 - Python 3.8+
 - Docker & Docker Compose
 - Git
-
 ### Installation Steps
+uvicorn main:app --reload --host 0.0.0.0 --port 8080
+uvicorn main:app --reload
+
+
+sudo apt install python3-venv -y
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
