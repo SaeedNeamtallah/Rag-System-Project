@@ -31,7 +31,7 @@ class DataController(BaseController):
         if not os.path.exists(os.path.dirname(unique_file_path)):
             os.makedirs(os.path.dirname(unique_file_path))
         logging.info(f"Generated unique file path: {unique_file_path}")
-        return unique_file_path
+        return unique_file_path ,unique_filename
         # Example: /path/to/current/directory/assets/files/{project_id}/{random_str}_{original_filename}
 
     def get_clean_file_name(self, orig_file_name: str):
