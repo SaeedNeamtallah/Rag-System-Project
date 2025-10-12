@@ -4,10 +4,9 @@ A lightweight Retrieval-Augmented Generation (RAG) application built with FastAP
 
 ## 🏗️ Architecture Overview
 
-
 ### Core Components
 
-```
+```text
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   Client App    │────▶│   FastAPI API   │────▶│   Controllers   │
 │  (Upload/Query) │     │   Routes        │     │  (Business      │
@@ -48,7 +47,7 @@ A lightweight Retrieval-Augmented Generation (RAG) application built with FastAP
 
 ## 📁 Project Structure
 
-```
+```text
 src/
 ├── main.py                     # FastAPI application entry point
 ├── requirements.txt            # Python dependencies
@@ -83,29 +82,40 @@ docker/
 ## 🚀 API Endpoints
 
 ### Base Endpoints
+
 - `GET /api/v1/` - Application information and health check
 
-### Data Management  
+### Data Management
+
 - `POST /api/v1/data/upload/{project_id}` - Upload files to a project
-- `POST /api/v1/data/process/{project_id}` - Process files into text chunks
+- `POST /api/v1/data/processall/{project_id}` - Process all files in a project
+- `POST /api/v1/data/processone/{project_id}` - Process a single file
 
 ### Request/Response Examples
 
 **Upload File:**
+
 ```bash
 curl -X POST "http://localhost:8000/api/v1/data/upload/my_project" \
      -F "file=@document.pdf"
 ```
 
-**Process File:**
+**Process Single File:**
+
 ```bash
-curl -X POST "http://localhost:8000/api/v1/data/process/my_project" \
+curl -X POST "http://localhost:8000/api/v1/data/processone/my_project" \
      -H "Content-Type: application/json" \
      -d '{
          "file_id": "abc123_document.pdf",
-         "chunk_size": 500,
-         "over_lap": 50
+         "chunk_size": 1000,
+         "overlap_size": 100
      }'
+```
+
+**Process All Files:**
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/data/processall/my_project"
 ```
 
 ## 🔧 Configuration
@@ -133,15 +143,54 @@ MONGODB_DB_NAME=minirag_db
 ## Prerequisites & Installation
 
 ### Prerequisites
+
 - Python 3.8+
 - Docker & Docker Compose
 - Git
+
 ### Installation Steps
-uvicorn main:app --reload --host 0.0.0.0 --port 8080
-uvicorn main:app --reload
 
+1. **Clone the repository:**
 
-sudo apt install python3-venv -y
+```bash
+git clone https://github.com/SaeedNeamtallah/Rag-System-Project.git
+cd Rag-System-Project
+```
+
+2. **Create and activate virtual environment:**
+
+```bash
+# On Linux/Mac
 python3 -m venv venv
 source venv/bin/activate
+
+# On Windows
+python -m venv venv
+venv\Scripts\activate
+```
+
+3. **Install dependencies:**
+
+```bash
+cd src
 pip install -r requirements.txt
+```
+
+4. **Create `.env` file:**
+
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+5. **Run the application:**
+
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+6. **Access the API:**
+
+- API: `http://localhost:8000`
+- API Docs: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
