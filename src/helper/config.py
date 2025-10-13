@@ -8,7 +8,9 @@ class Settings(BaseSettings):
     FILE_MAX_SIZE: Optional[int]  # 10 MB
     FILE_ALLOWED_TYPES: str
     CHUNK_SIZE: Optional[int]  # characters
-    CHUNK_OVERLAP: Optional[int]  # characters
+    CHUNK_OVERLAP: Optional[int]  # characters'
+    MONGO_URI: str
+    MONGO_DB_NAME: str
 
 
 
