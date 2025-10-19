@@ -5,10 +5,10 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - ./mongo-data:/data/db # Persist data
+      - mongo-data:/data/db # Persist data
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
     networks:
       - backend
     restart: always
@@ -17,4 +17,8 @@ networks:
   backend:
     driver: bridge
 
+volumes:
+    mongo-data:
+
+    
 
