@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import  Optional
 from bson import ObjectId
+from datetime import datetime
 
 class ProjectSchema(BaseModel):
     """
@@ -17,8 +18,8 @@ class ProjectSchema(BaseModel):
 
     id: Optional[ObjectId] = Field(default=None, alias="_id")
     project_id: str = Field(..., min_length=1)
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     class Config:
         # Allow arbitrary types like ObjectId
@@ -27,7 +28,22 @@ class ProjectSchema(BaseModel):
         populate_by_name = True
         # JSON schema customization for ObjectId
         json_encoders = {
-            ObjectId: str  # Convert ObjectId to string in JSON responses
+            ObjectId: str,  # Convert ObjectId to string in JSON responses
+            datetime: lambda v: v.isoformat() if v else None  # Convert datetime to ISO string
         }
+
+    
+    @classmethod
+    def get_indexes(cls):
+
+        return [
+            {
+                 "key":[  ("project_id",1)  ],
+                 "name":"project_id_index_1",
+                 "unique":True
+                 
+            }
+
+        ]
 
 
