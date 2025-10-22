@@ -12,6 +12,18 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: Optional[int]  # characters'
     MONGO_URI: str
     MONGO_DB_NAME: str
+    # ========================= LLM Config =========================
+    GENERATION_BACKEND: str
+    EMBEDDING_BACKEND: str
+    OPENAI_API_KEY: str
+    OPENAI_API_URL: str
+    COHERE_API_KEY: str
+    GENERATION_MODEL_ID: str
+    EMBEDDING_MODEL_ID: str
+    EMBEDDING_MODEL_SIZE: int
+    INPUT_DAFAULT_MAX_CHARACTERS: int
+    GENERATION_DAFAULT_MAX_TOKENS: int
+    GENERATION_DAFAULT_TEMPERATURE: float
 
     @property
     def file_allowed_types_list(self) -> List[str]:
