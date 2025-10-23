@@ -13,20 +13,29 @@ A robust Retrieval-Augmented Generation (RAG) system built with FastAPI that ena
 └─────────────────┘     └─────────────────┘     │   Logic)        │
                                                 └─────────┬───────┘
                                                           │
-                                                          ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   MongoDB       │◀────│   Data Models   │◀────│   File Storage  │
-│  (Chunks &      │     │  (Pydantic)     │     │  (Project-based │
-│   Projects)     │     └─────────────────┘     │   Organization) │
-└─────────────────┘                             └─────────────────┘
-                                                          ▲
-                                                          │
-                                                          ▼
+                        ┌─────────────────────────────────┼───────────────┐
+                        ▼                                 ▼               ▼
+                ┌───────────────┐              ┌──────────────┐  ┌──────────────┐
+                │   MongoDB     │              │ LLM Providers│  │ VectorDB     │
+                │  (Chunks &    │              │ (OpenAI,     │  │ (Qdrant)     │
+                │   Projects)   │              │  Cohere)     │  │              │
+                └───────────────┘              └──────────────┘  └──────────────┘
+                        ▲                              ▲                  ▲
+                        │                              │                  │
+                        └──────────┬───────────────────┴──────────────────┘
+                                   ▼
                         ┌─────────────────┐     ┌─────────────────┐
                         │   LangChain     │────▶│   Document      │
                         │  Text Splitter  │     │   Loaders       │
                         │  (Chunking)     │     │  (PDF, TXT)     │
                         └─────────────────┘     └─────────────────┘
+                                   ▲
+                                   │
+                        ┌─────────────────┐
+                        │   File Storage  │
+                        │  (Project-based │
+                        │   Organization) │
+                        └─────────────────┘
 ```
 
 ### Data Flow
@@ -34,18 +43,38 @@ A robust Retrieval-Augmented Generation (RAG) system built with FastAPI that ena
 1. **Document Upload** → File validation → Unique naming → Project storage
 2. **Document Processing** → Content extraction → Text chunking → Metadata preservation  
 3. **Data Storage** → MongoDB chunks → Project organization → Retrieval indexing
+4. **Vector Embeddings** → LLM Provider → Generate embeddings → Store in VectorDB
+5. **Similarity Search** → Query vectors → VectorDB search → Retrieve relevant chunks
+
+### Provider Architecture
+
+The system uses a **Factory Pattern** for extensible provider management:
+
+**LLM Providers:**
+- Abstract `LLMInterface` defines the contract
+- `LLMProviderFactory` creates provider instances
+- Support for OpenAI and Cohere (easily extensible)
+- Unified API for text generation and embeddings
+
+**VectorDB Providers:**
+- Abstract `VectorDBInterface` defines the contract
+- `VectorDBProviderFactory` creates provider instances
+- Qdrant implementation for vector storage
+- Support for collection management and similarity search
 
 ## 🛠️ Technical Stack
 
 - **Backend Framework**: FastAPI with async/await patterns
 - **Database**: MongoDB with Motor (async Python driver)
+- **Vector Database**: Qdrant for vector storage and similarity search
+- **LLM Providers**: OpenAI and Cohere with factory pattern
 - **Document Processing**: LangChain (text splitting, document loading)
 - **PDF Processing**: PyMuPDF (FitzPDF) for efficient PDF extraction
 - **Data Validation**: Pydantic v2 with custom validators
 - **File Handling**: aiofiles for async I/O operations
 - **Containerization**: Docker & Docker Compose
 - **Python Version**: 3.12+
-- **Additional Libraries**: pymongo, aiofiles, python-dotenv, python-multipart
+- **Additional Libraries**: pymongo, aiofiles, python-dotenv, python-multipart, qdrant-client, openai, cohere
 
 ## 📁 Project Structure
 
@@ -87,6 +116,24 @@ src/
 │   │   ├── ResponseEnums.py         # API response enums
 │   │   └── __pycache__/
 │   └── __pycache__/
+├── stores/                          # External service providers
+│   ├── llm/                         # LLM providers (OpenAI, Cohere)
+│   │   ├── __init__.py
+│   │   ├── LLMInterface.py          # Abstract LLM interface
+│   │   ├── LLMEnums.py              # LLM provider enums
+│   │   ├── LLMProviderFactory.py    # Factory for LLM providers
+│   │   └── providers/
+│   │       ├── __init__.py
+│   │       ├── OpenAIProvider.py    # OpenAI implementation
+│   │       └── CoHereProvider.py    # Cohere implementation
+│   └── vectordb/                    # Vector database providers
+│       ├── __init__.py
+│       ├── VectorDBInterface.py     # Abstract VectorDB interface
+│       ├── VectorDBEnums.py         # VectorDB provider enums
+│       ├── VectorDBProviderFactory.py # Factory for VectorDB providers
+│       └── providers/
+│           ├── __init__.py
+│           └── QdrantDBProvider.py  # Qdrant implementation
 └── assets/
     └── files/                       # File storage (organized by project)
         └── {project_id}/            # Project-specific directories
@@ -202,6 +249,22 @@ CHUNK_OVERLAP=100                   # Default overlap between chunks
 # Database Configuration
 MONGO_URI=mongodb://root:example@localhost:27017
 MONGO_DB_NAME=rag_system_db
+
+# Vector Database Configuration
+VECTOR_DB_PROVIDER=QDRANT           # Vector database provider
+VECTOR_DB_PATH=./vectordb           # Path for Qdrant storage
+VECTOR_DB_DISTANCE_METHOD=cosine    # Distance method: cosine or dot
+
+# LLM Configuration
+LLM_PROVIDER=OPENAI                 # LLM provider: OPENAI or COHERE
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_API_URL=https://api.openai.com/v1  # Optional custom endpoint
+COHERE_API_KEY=your_cohere_api_key
+
+# LLM Default Parameters
+INPUT_DEFAULT_MAX_CHARACTERS=1000
+GENERATION_DEFAULT_MAX_TOKENS=1000
+GENERATION_DEFAULT_TEMPERATURE=0.1
 ```
 
 ### Docker Environment (.env in docker/)
@@ -318,6 +381,7 @@ MONGO_INITDB_ROOT_PASSWORD=example
 ## 🐛 Recent Fixes & Improvements
 
 ### v1.0.0 Updates
+
 - ✅ Fixed data persistence: chunks and projects now properly saved to MongoDB
 - ✅ Implemented async factory pattern for all models (ChunkModel, ProjectModel, AssetModel)
 - ✅ Added comprehensive error handling in all endpoints
@@ -327,6 +391,10 @@ MONGO_INITDB_ROOT_PASSWORD=example
 - ✅ Improved file upload with validation and error responses
 - ✅ Added project lookup before processing with 404 handling
 - ✅ Implemented batch chunk insertion for performance
+- ✅ Added LLM provider abstraction with OpenAI and Cohere support
+- ✅ Added VectorDB provider abstraction with Qdrant support
+- ✅ Implemented factory pattern for extensible provider management
+- ✅ Added comprehensive documentation and type hints across all modules
 
 ## 🧪 Testing
 
