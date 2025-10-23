@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     GENERATION_DAFAULT_MAX_TOKENS: int
     GENERATION_DAFAULT_TEMPERATURE: float
 
+    # vector store config
+    VECTOR_DB_BACKEND : str
+    VECTOR_DB_PATH : str
+    VECTOR_DB_DISTANCE_METHOD: str = None
+
     @property
     def file_allowed_types_list(self) -> List[str]:
         """Parse FILE_ALLOWED_TYPES from string to list"""
