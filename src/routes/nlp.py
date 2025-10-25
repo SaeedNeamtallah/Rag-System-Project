@@ -6,7 +6,6 @@ import logging
 from models.ProjectModel import ProjectModel
 from models.ChunkModel import ChunkModel
 from controllers.NLPController import NLPController
-from stores.llm.templete.templete_parser import TemplateParser
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,7 @@ async def push_endpoint(project_id: str, req: Request, payload: PushRequest):
         vector_client=req.app.state.vector_db_client,
         generation_client=req.app.state.generation_client,
         embedding_client=req.app.state.embedding_client,
-        templete_parser=TemplateParser()
+        templete_parser=req.app.state.template_parser
     )
 
     # 4) reset 
@@ -62,7 +61,7 @@ async def push_endpoint(project_id: str, req: Request, payload: PushRequest):
                 )
             break
 
-        chunk_ids = [str(chunk.id) for chunk in chunk_list]
+        chunk_ids = list(range((page_no - 1) * page_size, (page_no - 1) * page_size + len(chunk_list)))
 
         index_result = nlp_controller.index_into_vector_db(
             project=project,
@@ -113,7 +112,7 @@ async def get_index_info_endpoint(project_id: str, req: Request):
         vector_client=req.app.state.vector_db_client,
         generation_client=req.app.state.generation_client,
         embedding_client=req.app.state.embedding_client,
-        templete_parser=TemplateParser()
+        templete_parser=req.app.state.template_parser
     )
 
     try:
@@ -123,6 +122,7 @@ async def get_index_info_endpoint(project_id: str, req: Request):
                 status_code=status.HTTP_404_NOT_FOUND,
                 content={"message": f"Vector DB collection for project {project_id} not found."}
             )
+        
     except Exception as e:
         logger.error("Error getting collection info for project %s: %s", project_id, e)
         return JSONResponse(
@@ -155,7 +155,7 @@ async def search_endpoint(project_id: str, req: Request, payload: SearchRequest)
         vector_client=req.app.state.vector_db_client,
         generation_client=req.app.state.generation_client,
         embedding_client=req.app.state.embedding_client,
-        templete_parser=TemplateParser()
+        templete_parser=req.app.state.template_parser
         
     )
 
@@ -169,7 +169,14 @@ async def search_endpoint(project_id: str, req: Request, payload: SearchRequest)
         if search_results is None:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
-                content={"message": f"No results found or collection doesn't exist for project {project_id}"}
+                content={"message": f"No results found or collection doesn't exist for project {project_id}. Try pushing with do_reset=true first."}
+            )
+
+        # Handle empty results
+        if len(search_results) == 0:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"message": f"No search results found for query in project {project_id}"}
             )
 
         # Serialize Qdrant search results
@@ -183,7 +190,7 @@ async def search_endpoint(project_id: str, req: Request, payload: SearchRequest)
         ]
 
     except Exception as e:
-        logger.error("Error searching in project %s: %s", project_id, e)
+        logger.error("Error searching in project %s: %s", project_id, e, exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": f"Search failed: {str(e)}"}
@@ -201,4 +208,54 @@ async def search_endpoint(project_id: str, req: Request, payload: SearchRequest)
 
 
 
+@router.post("/generate/{project_id}")
+async def generate_endpoint(project_id: str, req: Request, payload: SearchRequest):
+    project_model = await ProjectModel.create_instance(db=req.app.state.db)
+
+    project = await project_model.get_or_create(project_id=project_id)
+    if not project:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"message": f"Project with id {project_id} not found."}
+        )
+
+    nlp_controller = NLPController(
+        vector_client=req.app.state.vector_db_client,
+        generation_client=req.app.state.generation_client,
+        embedding_client=req.app.state.embedding_client,
+        templete_parser=req.app.state.template_parser
+    )
+
+    try:
+        answer, full_prompt, chat_history = nlp_controller.answer_rag_question(
+            project=project,
+            query=payload.text
+        )
+
+        if answer is None:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"message": f"No results found to generate answer for project {project_id}"}
+            )
+
+    except Exception as e:
+        logger.error("Error generating response for project %s: %s", project_id, e, exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": f"Generation failed: {str(e)}"}
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "project_id": project_id,
+            "query": payload.text,
+            "answer": answer,
+            "context_documents_count": len(full_prompt.split("## Document No:")) - 1 if full_prompt else 0,
+            "full_prompt": full_prompt,
+            "chat_history": chat_history,
+            
+        
+        }
+    )
 

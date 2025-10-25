@@ -53,8 +53,13 @@ class QdrantDBProvider(VectorDBInterface):
         return self.client.get_collection(collection_name=collection_name)
 
     def delete_collection(self, collection_name: str):
-        """Delete a collection."""
-        self.client.delete_collection(collection_name=collection_name)
+        """Delete a collection. Safely handles non-existent collections."""
+        try:
+            if self.is_collection_existed(collection_name):
+                self.client.delete_collection(collection_name=collection_name)
+                self.logger.info(f"Successfully deleted collection: {collection_name}")
+        except Exception as e:
+            self.logger.warning(f"Error deleting collection {collection_name}: {e}")
 
     def create_collection(self, collection_name: str, embedding_size: int, do_reset: bool = False):
         """Create a new collection. Optionally reset if exists."""
@@ -133,7 +138,7 @@ class QdrantDBProvider(VectorDBInterface):
     def search_by_vector(self, collection_name: str, vector: list, limit: int):
         """Search for similar vectors in collection."""
         if not self.is_collection_existed(collection_name):
-            self.logger.error(f"Collection {collection_name} does not exist.")
+            self.logger.error(f"Collection {collection_name} does not exist. Available collections: {self.list_all_collections()}")
             return None
 
         try:
@@ -142,7 +147,8 @@ class QdrantDBProvider(VectorDBInterface):
                 query_vector=vector,
                 limit=limit
             )
+            self.logger.info(f"Search in {collection_name} returned {len(search_result) if search_result else 0} results")
             return search_result
         except Exception as e:
-            self.logger.error(f"Error searching in {collection_name}: {e}")
+            self.logger.error(f"Error searching in {collection_name}: {e}", exc_info=True)
             return None

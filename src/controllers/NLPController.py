@@ -2,7 +2,10 @@ from .BaseContoller import BaseController
 from models.db_schemas import ProjectSchema ,ChunkSchema
 from stores.llm.LLMEnums import DocumentTypeEnum
 from typing import List
+import json
+import logging
 
+logger = logging.getLogger(__name__)
 
 class NLPController(BaseController):
     def __init__(self,vector_client ,generation_client,embedding_client,templete_parser):
@@ -14,7 +17,9 @@ class NLPController(BaseController):
 
 
     def create_collection_name(self, project_id: str):
-        return f"collection_{project_id}".strip()
+        collection_name = f"collection_{project_id}".strip()
+        logger.info(f"Collection name for project {project_id}: {collection_name}")
+        return collection_name
     
     def reset_vector_db_collection(self,project: ProjectSchema):
         collection_name = self.create_collection_name(project.id)
@@ -24,7 +29,8 @@ class NLPController(BaseController):
     def get_vector_db_collection_info(self,project: ProjectSchema):
         collection_name = self.create_collection_name(project.id)
         collection_info = self.vector_client.get_collection_info(collection_name)
-        return collection_info
+
+        return json.loads(json.dumps(collection_info, default=lambda o: o.__dict__))
 
     def index_into_vector_db(self,project: ProjectSchema, chunks: List[ChunkSchema],chunk_ids: List[int],do_reset: bool = False):
         collection_name = self.create_collection_name(project.id)
@@ -73,6 +79,7 @@ class NLPController(BaseController):
         
         # step2: construct llm prompt
         system_prompt = self.templete_parser.get("rag","system_prompt")
+        logger.info(f"System prompt: {system_prompt[:100]}...")
         
         # Extract text from Qdrant ScoredPoint results
         documents_prompt = "\n".join(
@@ -81,18 +88,27 @@ class NLPController(BaseController):
                 "chunk_text": doc.payload.get("chunk_text", ""),
             }) for idx, doc in enumerate(search_results)
         )
+        logger.info(f"Documents prompt length: {len(documents_prompt)}")
 
         footer_prompt = self.templete_parser.get("rag","footer_prompt",{"query": query})
+        logger.info(f"Footer prompt: {footer_prompt}")
 
         # Construct chat history as list with system message
-        chat_history = [
-            self.generation_client.construct_prompt(
-                prompt=system_prompt,
-                role=self.generation_client.enums.SYSTEM.value,
-            )
-        ]
+        system_message = self.generation_client.construct_prompt(
+            prompt=system_prompt,
+            role=self.generation_client.enums.SYSTEM.value,
+        )
+        logger.info(f"System message: {system_message}")
+        
+        chat_history = [system_message]
 
         full_prompt = "\n".join([documents_prompt, footer_prompt])
+        logger.info(f"Full prompt preview: {full_prompt[:200]}...")
+        logger.info(f"Full prompt length: {len(full_prompt)}")
+        
+        # Log the complete message structure
+        user_message_preview = full_prompt[:300] + "..." if len(full_prompt) > 300 else full_prompt
+        logger.info(f"Will send to LLM - System: {system_message.get('content', '')[:100]}... | User: {user_message_preview}")
 
         answer = self.generation_client.generate_text(
             prompt=full_prompt,

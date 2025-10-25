@@ -1,6 +1,6 @@
 # RAG System Project
 
-A robust Retrieval-Augmented Generation (RAG) system built with FastAPI that enables document upload, intelligent processing, and AI-powered retrieval. Upload files, automatically process them into searchable chunks stored in MongoDB, and retrieve contextual information for your AI applications.
+A robust Retrieval-Augmented Generation (RAG) system built with FastAPI that enables document upload, intelligent processing, vector-based similarity search, and AI-powered answer generation. Upload files, automatically process them into searchable chunks with embeddings, store in MongoDB and Qdrant vector database, and retrieve contextual answers powered by LLMs for your AI applications.
 
 ## 🏗️ Architecture Overview
 
@@ -43,38 +43,44 @@ A robust Retrieval-Augmented Generation (RAG) system built with FastAPI that ena
 1. **Document Upload** → File validation → Unique naming → Project storage
 2. **Document Processing** → Content extraction → Text chunking → Metadata preservation  
 3. **Data Storage** → MongoDB chunks → Project organization → Retrieval indexing
-4. **Vector Embeddings** → LLM Provider → Generate embeddings → Store in VectorDB
-5. **Similarity Search** → Query vectors → VectorDB search → Retrieve relevant chunks
+4. **Vector Embeddings** → LLM Provider (Cohere/OpenAI) → Generate embeddings → Store in Qdrant VectorDB
+5. **Similarity Search** → Query vectors → VectorDB search → Retrieve top-k relevant chunks
+6. **Answer Generation** → Prompt construction with context → LLM generation → AI-powered answers
 
 ### Provider Architecture
 
 The system uses a **Factory Pattern** for extensible provider management:
 
 **LLM Providers:**
+
 - Abstract `LLMInterface` defines the contract
 - `LLMProviderFactory` creates provider instances
 - Support for OpenAI and Cohere (easily extensible)
 - Unified API for text generation and embeddings
+- Multi-language prompt templates with dynamic imports
 
 **VectorDB Providers:**
+
 - Abstract `VectorDBInterface` defines the contract
 - `VectorDBProviderFactory` creates provider instances
 - Qdrant implementation for vector storage
 - Support for collection management and similarity search
+- Configurable distance metrics (cosine, dot product)
 
 ## 🛠️ Technical Stack
 
-- **Backend Framework**: FastAPI with async/await patterns
+- **Backend Framework**: FastAPI with async/await patterns and lifespan context management
 - **Database**: MongoDB with Motor (async Python driver)
 - **Vector Database**: Qdrant for vector storage and similarity search
-- **LLM Providers**: OpenAI and Cohere with factory pattern
+- **LLM Providers**: OpenAI and Cohere with factory pattern (supports custom OpenAI-compatible APIs)
+- **Template Engine**: Multi-language prompt template system with Python string.Template
 - **Document Processing**: LangChain (text splitting, document loading)
 - **PDF Processing**: PyMuPDF (FitzPDF) for efficient PDF extraction
 - **Data Validation**: Pydantic v2 with custom validators
 - **File Handling**: aiofiles for async I/O operations
 - **Containerization**: Docker & Docker Compose
 - **Python Version**: 3.12+
-- **Additional Libraries**: pymongo, aiofiles, python-dotenv, python-multipart, qdrant-client, openai, cohere
+- **Additional Libraries**: pymongo, aiofiles, python-dotenv, python-multipart, qdrant-client, openai, cohere, langchain
 
 ## 📁 Project Structure
 
@@ -89,15 +95,17 @@ src/
 │   ├── __init__.py
 │   ├── base.py                      # Health/version endpoints
 │   ├── data_route.py                # File upload & processing endpoints
+│   ├── nlp.py                       # RAG endpoints (push, search, generate)
 │   └── schemas/
 │       ├── __init__.py
-│       └── dataproces_schemas.py    # Request/response schemas
+│       ├── dataproces_schemas.py    # Request/response schemas
+│       └── nlp.py                   # NLP/RAG schemas
 ├── controllers/
 │   ├── __init__.py
 │   ├── BaseContoller.py             # Base controller functionality
 │   ├── DataController.py            # File validation & storage
 │   ├── ProcessController.py         # Document processing & chunking
-│   └── __pycache__/
+│   └── NLPController.py             # RAG logic (search, answer generation)
 ├── models/
 │   ├── __init__.py
 │   ├── BaseDataModel.py             # Base async MongoDB model
@@ -122,10 +130,20 @@ src/
 │   │   ├── LLMInterface.py          # Abstract LLM interface
 │   │   ├── LLMEnums.py              # LLM provider enums
 │   │   ├── LLMProviderFactory.py    # Factory for LLM providers
-│   │   └── providers/
+│   │   ├── providers/
+│   │   │   ├── __init__.py
+│   │   │   ├── OpenAIProvider.py    # OpenAI implementation
+│   │   │   └── CoHereProvider.py    # Cohere implementation
+│   │   └── templete/
 │   │       ├── __init__.py
-│   │       ├── OpenAIProvider.py    # OpenAI implementation
-│   │       └── CoHereProvider.py    # Cohere implementation
+│   │       ├── templete_parser.py   # Template parser for prompts
+│   │       └── locales/
+│   │           ├── ar/              # Arabic templates
+│   │           │   ├── __init__.py
+│   │           │   └── rag.py
+│   │           └── en/              # English templates
+│   │               ├── __init__.py
+│   │               └── rag.py
 │   └── vectordb/                    # Vector database providers
 │       ├── __init__.py
 │       ├── VectorDBInterface.py     # Abstract VectorDB interface
@@ -162,6 +180,14 @@ LICENSE                            # Project license
 | `POST` | `/api/v1/data/upload/{project_id}` | Upload files to a project (returns asset_id) |
 | `POST` | `/api/v1/data/processall/{project_id}` | Process all files in project, save chunks to MongoDB |
 | `POST` | `/api/v1/data/processone/{project_id}` | Process single file, save chunks with optional reset |
+
+### NLP/RAG Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/nlp/push` | Push documents to vector database with embeddings |
+| `POST` | `/api/v1/nlp/search` | Search for similar documents using vector similarity |
+| `POST` | `/api/v1/nlp/generate` | Generate AI-powered answers based on query and context |
 
 ### Response Structure
 
@@ -229,7 +255,97 @@ curl -X POST "http://localhost:8000/api/v1/data/processall/my_project"
 }
 ```
 
+**Push Documents to Vector Database:**
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/nlp/push" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "project_id": "my_project",
+       "do_reset": false
+     }'
+
+# Response:
+{
+  "status": "success",
+  "message": "Successfully pushed 150 chunks to vector database",
+  "total_chunks": 150,
+  "embedding_model": "embed-v4.0",
+  "vector_dimension": 256
+}
+```
+
+**Search Similar Documents:**
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/nlp/search" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "project_id": "my_project",
+       "query": "What is the main topic?",
+       "top_k": 5
+     }'
+
+# Response:
+{
+  "status": "success",
+  "results": [
+    {
+      "chunk_text": "The main topic discusses...",
+      "score": 0.89,
+      "chunk_id": "507f1f77bcf86cd799439011"
+    },
+    ...
+  ],
+  "total_results": 5
+}
+```
+
+**Generate AI-Powered Answer:**
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/nlp/generate" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "project_id": "my_project",
+       "query": "What is the main topic?",
+       "language": "en",
+       "top_k": 5
+     }'
+
+# Response:
+{
+  "status": "success",
+  "answer": "Based on the documents, the main topic discusses...",
+  "context_documents_count": 5
+}
+```
+
 ## 🔧 Configuration
+
+### RAG Workflow
+
+The RAG system follows a complete pipeline from document upload to AI-powered answer generation:
+
+1. **Upload Documents**: Upload PDF or text files to project-specific directories
+2. **Process & Chunk**: Extract text and split into semantic chunks with overlap
+3. **Generate Embeddings**: Create vector embeddings using Cohere or OpenAI
+4. **Store Vectors**: Index embeddings in Qdrant vector database for similarity search
+5. **Query Processing**: Convert user queries into embeddings
+6. **Retrieve Context**: Find top-k most relevant document chunks via vector similarity
+7. **Prompt Construction**: Build context-aware prompts with multi-language templates
+8. **Generate Answers**: Use LLM to generate answers based on retrieved context
+
+### Key Features
+
+- **Multi-Provider Support**: Switch between OpenAI and Cohere for embeddings and generation
+- **Custom LLM Endpoints**: Use OpenAI-compatible APIs (e.g., local Ollama models via ngrok)
+- **Vector Search**: Similarity search with configurable distance metrics (cosine, dot product)
+- **Template System**: Multi-language prompt templates with dynamic variable substitution
+- **Async Processing**: Non-blocking I/O for efficient file processing and database operations
+- **Lazy Loading**: Optimized startup with on-demand provider initialization
+- **Flexible Chunking**: Configurable chunk sizes and overlap for optimal retrieval
+- **Project Isolation**: Separate vector collections per project for organization
 
 ### Environment Variables
 
@@ -252,19 +368,24 @@ MONGO_DB_NAME=rag_system_db
 
 # Vector Database Configuration
 VECTOR_DB_PROVIDER=QDRANT           # Vector database provider
-VECTOR_DB_PATH=./vectordb           # Path for Qdrant storage
+VECTOR_DB_PATH=./assets/files/qdrant_db  # Path for Qdrant storage
 VECTOR_DB_DISTANCE_METHOD=cosine    # Distance method: cosine or dot
 
-# LLM Configuration
-LLM_PROVIDER=OPENAI                 # LLM provider: OPENAI or COHERE
+# Embedding Configuration
+EMBEDDING_BACKEND=COHERE            # Embedding provider: OPENAI or COHERE
+EMBEDDING_MODEL=embed-v4.0          # Cohere embedding model
+EMBEDDING_MODEL_SIZE=256            # Embedding dimension size (256 for Cohere, 1536 for OpenAI)
+
+# Generation/LLM Configuration
+GENERATION_BACKEND=OPENAI           # Generation provider: OPENAI or COHERE
 OPENAI_API_KEY=your_openai_api_key
-OPENAI_API_URL=https://api.openai.com/v1  # Optional custom endpoint
+OPENAI_API_URL=https://api.openai.com/v1  # Optional custom endpoint (supports local Ollama)
 COHERE_API_KEY=your_cohere_api_key
 
 # LLM Default Parameters
-INPUT_DEFAULT_MAX_CHARACTERS=1000
-GENERATION_DEFAULT_MAX_TOKENS=1000
-GENERATION_DEFAULT_TEMPERATURE=0.1
+INPUT_DEFAULT_MAX_CHARACTERS=16000  # Maximum input characters for prompts
+GENERATION_DEFAULT_MAX_TOKENS=1000  # Maximum tokens for generated responses
+GENERATION_DEFAULT_TEMPERATURE=0.1  # Temperature for text generation
 ```
 
 ### Docker Environment (.env in docker/)
@@ -337,6 +458,7 @@ MONGO_INITDB_ROOT_PASSWORD=example
 ### Collections
 
 #### `projects` Collection
+
 ```json
 {
   "_id": ObjectId,
@@ -347,6 +469,7 @@ MONGO_INITDB_ROOT_PASSWORD=example
 ```
 
 #### `chunks` Collection
+
 ```json
 {
   "_id": ObjectId,
@@ -360,6 +483,7 @@ MONGO_INITDB_ROOT_PASSWORD=example
 ```
 
 #### `assets` Collection
+
 ```json
 {
   "_id": ObjectId,
@@ -380,7 +504,22 @@ MONGO_INITDB_ROOT_PASSWORD=example
 
 ## 🐛 Recent Fixes & Improvements
 
-### v1.0.0 Updates
+### v1.1.0 Updates - RAG Implementation
+
+- ✅ Implemented complete RAG pipeline (Retrieval-Augmented Generation)
+- ✅ Added vector database integration with Qdrant
+- ✅ Implemented embedding generation with Cohere and OpenAI support
+- ✅ Added similarity search functionality for document retrieval
+- ✅ Implemented AI-powered answer generation with context
+- ✅ Added multi-language prompt template system
+- ✅ Support for custom OpenAI-compatible APIs (e.g., local Ollama)
+- ✅ Optimized startup performance with lazy loading
+- ✅ Added singleton TemplateParser in lifespan context
+- ✅ Fixed dimension mismatch issues between embedding providers
+- ✅ Improved error handling and logging throughout RAG pipeline
+- ✅ Added comprehensive NLP endpoints (/push, /search, /generate)
+
+### v1.0.0 Updates - Data Processing
 
 - ✅ Fixed data persistence: chunks and projects now properly saved to MongoDB
 - ✅ Implemented async factory pattern for all models (ChunkModel, ProjectModel, AssetModel)
@@ -398,14 +537,14 @@ MONGO_INITDB_ROOT_PASSWORD=example
 
 ## 🧪 Testing
 
-### Manual Testing
+### Manual Testing - Complete RAG Workflow
 
 ```bash
 # 1. Upload a PDF file
 curl -X POST "http://localhost:8000/api/v1/data/upload/test_project" \
      -F "file=@sample.pdf"
 
-# 2. Process the uploaded file
+# 2. Process the uploaded file into chunks
 curl -X POST "http://localhost:8000/api/v1/data/processone/test_project" \
      -H "Content-Type: application/json" \
      -d '{
@@ -415,7 +554,34 @@ curl -X POST "http://localhost:8000/api/v1/data/processone/test_project" \
        "do_reset": false
      }'
 
-# 3. Verify chunks in MongoDB
+# 3. Push chunks to vector database with embeddings
+curl -X POST "http://localhost:8000/api/v1/nlp/push" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "project_id": "test_project",
+       "do_reset": false
+     }'
+
+# 4. Search for similar documents
+curl -X POST "http://localhost:8000/api/v1/nlp/search" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "project_id": "test_project",
+       "query": "What is the main topic?",
+       "top_k": 5
+     }'
+
+# 5. Generate AI-powered answer
+curl -X POST "http://localhost:8000/api/v1/nlp/generate" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "project_id": "test_project",
+       "query": "What is the main topic?",
+       "language": "en",
+       "top_k": 5
+     }'
+
+# 6. Verify chunks in MongoDB
 # Connect to MongoDB and check: db.chunks.find({"chunk_project_id": ObjectId("...")})
 ```
 
@@ -424,10 +590,45 @@ curl -X POST "http://localhost:8000/api/v1/data/processone/test_project" \
 ### Production Considerations
 
 1. **Environment Variables**: Update all `.env` files with production values
+   - Use strong MongoDB credentials (not default root/example)
+   - Add valid API keys for OpenAI/Cohere
+   - Configure appropriate token limits and chunk sizes
+   - Set VECTOR_DB_PATH to persistent storage location
+
 2. **MongoDB**: Use MongoDB Atlas or managed service with authentication
-3. **Security**: Enable HTTPS, add CORS policies, implement rate limiting
-4. **Logging**: Configure centralized logging for production monitoring
-5. **Docker**: Build optimized production images with multi-stage builds
+   - Enable authentication and encryption
+   - Configure backup and recovery procedures
+   - Set up replica sets for high availability
+
+3. **Vector Database**: Configure Qdrant for production
+   - Use persistent storage with regular backups
+   - Monitor memory usage for large collections
+   - Configure distance metrics based on embedding provider
+
+4. **Security**: 
+   - Enable HTTPS with valid SSL certificates
+   - Add CORS policies for allowed origins
+   - Implement rate limiting and request throttling
+   - Secure API keys with environment variables or secret management
+   - Add authentication/authorization for endpoints
+
+5. **Logging**: 
+   - Configure centralized logging for production monitoring
+   - Set up log rotation to manage disk space
+   - Monitor error rates and performance metrics
+   - Track embedding and generation costs
+
+6. **Docker**: 
+   - Build optimized production images with multi-stage builds
+   - Use Docker secrets for sensitive data
+   - Configure health checks and restart policies
+   - Set resource limits for containers
+
+7. **Performance**:
+   - Use connection pooling for MongoDB
+   - Cache embeddings to reduce API calls
+   - Implement async processing for large file uploads
+   - Monitor and optimize prompt sizes for LLM calls
 
 ## 📝 License
 

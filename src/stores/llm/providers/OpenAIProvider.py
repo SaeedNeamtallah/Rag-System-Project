@@ -16,8 +16,8 @@ class OpenAIProvider(LLMInterface):
         default_generation_temperature: float = 0.1,
     ):
         self.api_key = api_key
-        self.base_url = base_url
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.base_url = base_url if base_url and base_url.strip() else None
+        self.client = OpenAI(api_key=api_key, base_url=self.base_url)
         self.generation_model = None
         self.embedding_model = None
         self.embedding_size = None
@@ -25,7 +25,7 @@ class OpenAIProvider(LLMInterface):
         self.default_generation_max_output_tokens = default_generation_max_output_tokens
         self.default_generation_temperature = default_generation_temperature
         self.logger = logging.getLogger(__name__)
-        self.enums = OpenAIEnums()
+        self.enums = OpenAIEnums
         
     def set_generation_model(self, model_id: str):
         self.generation_model = model_id
@@ -47,7 +47,14 @@ class OpenAIProvider(LLMInterface):
             max_output_tokens or self.default_generation_max_output_tokens
         )
         temperature = temperature or self.default_generation_temperature
-        messages = chat_history + [self.construct_prompt(prompt, role=OpenAIEnums.USER.value)]
+        
+        user_message = self.construct_prompt(prompt, role=OpenAIEnums.USER.value)
+        messages = chat_history + [user_message]
+        
+        self.logger.info(f"Chat history length: {len(chat_history)}")
+        self.logger.info(f"User message content length: {len(user_message.get('content', ''))}")
+        self.logger.info(f"User message preview: {user_message.get('content', '')[:200]}...")
+        self.logger.info(f"Total messages count: {len(messages)}")
 
         response = self.client.chat.completions.create(
             model=self.generation_model,
