@@ -2,7 +2,7 @@
 
 from .providers.QdrantDBProvider import QdrantDBProvider
 from .VectorDBEnums import VectorDBEnums
-from ...controllers import BaseContoller
+from controllers.BaseContoller import BaseController
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -15,7 +15,7 @@ class VectorDBProviderFactory:
     def __init__(self, config: dict):
         """Initialize factory with configuration."""
         self.config = config
-        self.base_controller = BaseContoller()
+        self.base_controller = BaseController()
         self.db_path = self.base_controller.get_database_path(
             self.config.VECTOR_DB_PATH
         )

@@ -46,7 +46,7 @@ class CoHereProvider(LLMInterface):
         # Model configuration
         self.generation_model_id = None  # Set via set_generation_model()
         self.embedding_model_id = None   # Set via set_embedding_model()
-        self.embedding_size = None       # Embedding vector dimension
+        self.embedding_size = None       # Embedding vector embedding_size
 
         # Logger instance
         # Logger instance
@@ -67,7 +67,7 @@ class CoHereProvider(LLMInterface):
         
         Args:
             model_id (str): Cohere embedding model identifier (e.g., 'embed-english-v3.0')
-            embedding_size (int): Dimension of the embedding vectors produced by the model
+            embedding_size (int): embedding_size of the embedding vectors produced by the model
         """
         self.embedding_model_id = model_id
         self.embedding_size = embedding_size
