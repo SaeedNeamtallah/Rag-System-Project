@@ -6,6 +6,7 @@ import logging
 from models.ProjectModel import ProjectModel
 from models.ChunkModel import ChunkModel
 from controllers.NLPController import NLPController
+from stores.llm.templete.templete_parser import TemplateParser
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,8 @@ async def push_endpoint(project_id: str, req: Request, payload: PushRequest):
     nlp_controller = NLPController(
         vector_client=req.app.state.vector_db_client,
         generation_client=req.app.state.generation_client,
-        embedding_client=req.app.state.embedding_client
+        embedding_client=req.app.state.embedding_client,
+        templete_parser=TemplateParser()
     )
 
     # 4) reset 
@@ -110,7 +112,8 @@ async def get_index_info_endpoint(project_id: str, req: Request):
     nlp_controller = NLPController(
         vector_client=req.app.state.vector_db_client,
         generation_client=req.app.state.generation_client,
-        embedding_client=req.app.state.embedding_client
+        embedding_client=req.app.state.embedding_client,
+        templete_parser=TemplateParser()
     )
 
     try:
@@ -151,7 +154,8 @@ async def search_endpoint(project_id: str, req: Request, payload: SearchRequest)
     nlp_controller = NLPController(
         vector_client=req.app.state.vector_db_client,
         generation_client=req.app.state.generation_client,
-        embedding_client=req.app.state.embedding_client
+        embedding_client=req.app.state.embedding_client,
+        templete_parser=TemplateParser()
         
     )
 

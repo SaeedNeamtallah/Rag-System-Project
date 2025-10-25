@@ -26,4 +26,7 @@ class ChunkSchema(BaseModel):
             }
         ]
     
+class RetrievedDocument(BaseModel):
+    text: str
+    score: float
     

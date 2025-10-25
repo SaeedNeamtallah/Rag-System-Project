@@ -48,7 +48,8 @@ class CoHereProvider(LLMInterface):
         self.embedding_model_id = None   # Set via set_embedding_model()
         self.embedding_size = None       # Embedding vector embedding_size
 
-        # Logger instance
+        self.enums = CoHereEnums()
+
         # Logger instance
         self.logger = logging.getLogger(__name__)
 
