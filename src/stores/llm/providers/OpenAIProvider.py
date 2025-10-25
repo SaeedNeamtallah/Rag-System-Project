@@ -25,7 +25,8 @@ class OpenAIProvider(LLMInterface):
         self.default_generation_max_output_tokens = default_generation_max_output_tokens
         self.default_generation_temperature = default_generation_temperature
         self.logger = logging.getLogger(__name__)
-
+        self.enums = OpenAIEnums()
+        
     def set_generation_model(self, model_id: str):
         self.generation_model = model_id
 

@@ -5,11 +5,12 @@ from typing import List
 
 
 class NLPController(BaseController):
-    def __init__(self,vector_client ,generation_client,embedding_client):
+    def __init__(self,vector_client ,generation_client,embedding_client,templete_parser):
         super().__init__()
         self.vector_client = vector_client
         self.generation_client = generation_client
         self.embedding_client = embedding_client
+        self.templete_parser = templete_parser
 
 
     def create_collection_name(self, project_id: str):
@@ -63,4 +64,40 @@ class NLPController(BaseController):
             limit=limit,
         )
         return search_results
+    
+    def answer_rag_question(self,project: ProjectSchema,query: str,limit: int =5):
+        # step1: search vector db
+        search_results = self.search_vector_db(project,query,limit)
+        if not search_results:
+            return None,None,None
+        
+        # step2: construct llm prompt
+        system_prompt = self.templete_parser.get("rag","system_prompt")
+        
+        # Extract text from Qdrant ScoredPoint results
+        documents_prompt = "\n".join(
+            self.templete_parser.get("rag","document_prompt",{
+                "doc_num": idx + 1,
+                "chunk_text": doc.payload.get("chunk_text", ""),
+            }) for idx, doc in enumerate(search_results)
+        )
+
+        footer_prompt = self.templete_parser.get("rag","footer_prompt",{"query": query})
+
+        # Construct chat history as list with system message
+        chat_history = [
+            self.generation_client.construct_prompt(
+                prompt=system_prompt,
+                role=self.generation_client.enums.SYSTEM.value,
+            )
+        ]
+
+        full_prompt = "\n".join([documents_prompt, footer_prompt])
+
+        answer = self.generation_client.generate_text(
+            prompt=full_prompt,
+            chat_history=chat_history,
+        )
+
+        return answer, full_prompt, chat_history
 
