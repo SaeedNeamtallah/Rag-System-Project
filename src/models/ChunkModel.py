@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional
 from datetime import datetime, timezone
 
 from motor.motor_asyncio import AsyncIOMotorDatabase, AsyncIOMotorCollection
@@ -50,7 +50,7 @@ class ChunkModel:
         try:
             res = await self.collection.insert_one(doc)
         except DuplicateKeyError as e:
-            raise ValueError(f"chunk with given unique fields already exists") from e
+            raise ValueError("chunk with given unique fields already exists") from e
         doc["_id"] = res.inserted_id
         return Chunk(**doc)
     
@@ -81,4 +81,16 @@ class ChunkModel:
         result = await self.collection.delete_many({"chunk_project_id": project_object_id})
         return result.deleted_count
     
+    async def get_project_chunks_paginated(
+        self,
+        project_object_id: ObjectId,
+        page: int = 1,
+        page_size: int = 50
+    ) -> List[Chunk]:
+        """Retrieve chunks for a project with pagination"""
+        skip = (page - 1) * page_size
+        cursor = self.collection.find({"chunk_project_id": project_object_id}).skip(skip).limit(page_size)
+        chunks = [Chunk(**doc) async for doc in cursor]
+
+        return chunks
     

@@ -21,14 +21,19 @@ class Settings(BaseSettings):
     GENERATION_MODEL_ID: str
     EMBEDDING_MODEL_ID: str
     EMBEDDING_MODEL_SIZE: int
-    INPUT_DAFAULT_MAX_CHARACTERS: int
-    GENERATION_DAFAULT_MAX_TOKENS: int
-    GENERATION_DAFAULT_TEMPERATURE: float
+    INPUT_DEFAULT_MAX_CHARACTERS: int
+    GENERATION_DEFAULT_MAX_TOKENS: int
+    GENERATION_DEFAULT_TEMPERATURE: float
 
     # vector store config
     VECTOR_DB_BACKEND : str
     VECTOR_DB_PATH : str
     VECTOR_DB_DISTANCE_METHOD: str = None
+
+    @property
+    def EMBEDDING_SIZE(self) -> int:
+        """Alias for EMBEDDING_MODEL_SIZE"""
+        return self.EMBEDDING_MODEL_SIZE
 
     @property
     def file_allowed_types_list(self) -> List[str]:

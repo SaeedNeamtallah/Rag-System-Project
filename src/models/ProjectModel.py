@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase, AsyncIOMotorCollection
 from pymongo.errors import DuplicateKeyError
 from .db_schemas.project_shemas import ProjectSchema as Project
+from pymongo import ReturnDocument
+
 
 
 class ProjectModel:
@@ -90,7 +92,7 @@ class ProjectModel:
         rec = await self.collection.find_one_and_update(
             {"project_id": project_id},
             {"$set": data},
-            return_document=True,
+            return_document=ReturnDocument.AFTER # return updated document
         )
         return Project(**rec) if rec else None
 
