@@ -38,7 +38,8 @@ A robust Retrieval-Augmented Generation (RAG) system built with FastAPI that ena
                         └─────────────────┘
 ```
 
-### Data Flow
+### Data Flow 
+
 
 1. **Document Upload** → File validation → Unique naming → Project storage
 2. **Document Processing** → Content extraction → Text chunking → Metadata preservation  
@@ -82,7 +83,7 @@ The system uses a **Factory Pattern** for extensible provider management:
 - **Python Version**: 3.12+
 - **Additional Libraries**: pymongo, aiofiles, python-dotenv, python-multipart, qdrant-client, openai, cohere, langchain
 
-## 📁 Project Structure
+## 📁 Project Structure 
 
 ```text
 src/
@@ -171,7 +172,7 @@ LICENSE                            # Project license
 
 ### Base Endpoints
 
-- `GET /api/v1/` - Application information and health check
+- `GET /api/v1/` - Application information and health check health
 
 ### Data Management Endpoints
 
