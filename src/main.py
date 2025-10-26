@@ -81,6 +81,16 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ Failed to initialize VectorDB provider: {e}")
         raise
 
+    # Startup - TemplateParser for RAG
+    logger.info("Initializing TemplateParser...")
+    try:
+        from stores.llm.templete.templete_parser import TemplateParser
+        app.state.template_parser = TemplateParser()
+        logger.info("✅ TemplateParser initialized")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize TemplateParser: {e}")
+        raise
+
     yield
 
     # Shutdown - Close all connections
