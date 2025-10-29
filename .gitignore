@@ -22,7 +22,7 @@ ENV/
 
 # IDE
 .vscode/
-.idea/
+project_idea/
 *.swp
 *.swo
 *~

@@ -1,6 +1,6 @@
 # RAG System Project
 
-A robust Retrieval-Augmented Generation (RAG) system built with FastAPI that enables document upload, intelligent processing, vector-based similarity search, and AI-powered answer generation. Upload files, automatically process them into searchable chunks with embeddings, store in MongoDB and Qdrant vector database, and retrieve contextual answers powered by LLMs for your AI applications.
+A robust Retrieval-Augmented Generation (RAG) system built with FastAPI that enables document upload, intelligent processing, vector-based similarity search, and AI-powered answer generation. Upload files, automatically process them into searchable chunks with embeddings, store in PostgreSQL with pgvector and Qdrant vector database, and retrieve contextual answers powered by LLMs for your AI applications.
 
 ## 🏗️ Architecture Overview
 
@@ -16,9 +16,11 @@ A robust Retrieval-Augmented Generation (RAG) system built with FastAPI that ena
                         ┌─────────────────────────────────┼───────────────┐
                         ▼                                 ▼               ▼
                 ┌───────────────┐              ┌──────────────┐  ┌──────────────┐
-                │   MongoDB     │              │ LLM Providers│  │ VectorDB     │
-                │  (Chunks &    │              │ (OpenAI,     │  │ (Qdrant)     │
-                │   Projects)   │              │  Cohere)     │  │              │
+                │  PostgreSQL   │              │ LLM Providers│  │ VectorDB     │
+                │  + pgvector   │              │ (OpenAI,     │  │ (Qdrant)     │
+                │  (Chunks,     │              │  Cohere)     │  │              │
+                │   Projects,   │              │              │  │              │
+                │   Assets)     │              │              │  │              │
                 └───────────────┘              └──────────────┘  └──────────────┘
                         ▲                              ▲                  ▲
                         │                              │                  │
@@ -38,11 +40,12 @@ A robust Retrieval-Augmented Generation (RAG) system built with FastAPI that ena
                         └─────────────────┘
 ```
 
-### Data Flow
+### Data Flow 
+
 
 1. **Document Upload** → File validation → Unique naming → Project storage
-2. **Document Processing** → Content extraction → Text chunking → Metadata preservation  
-3. **Data Storage** → MongoDB chunks → Project organization → Retrieval indexing
+2. **Document Processing** → Content extraction → Text chunking → Metadata preservation
+3. **Data Storage** → PostgreSQL (via SQLAlchemy async) → Project organization → Asset tracking
 4. **Vector Embeddings** → LLM Provider (Cohere/OpenAI) → Generate embeddings → Store in Qdrant VectorDB
 5. **Similarity Search** → Query vectors → VectorDB search → Retrieve top-k relevant chunks
 6. **Answer Generation** → Prompt construction with context → LLM generation → AI-powered answers
@@ -70,7 +73,9 @@ The system uses a **Factory Pattern** for extensible provider management:
 ## 🛠️ Technical Stack
 
 - **Backend Framework**: FastAPI with async/await patterns and lifespan context management
-- **Database**: MongoDB with Motor (async Python driver)
+- **Database**: PostgreSQL 18.0 with pgvector extension (v0.8.1) for vector similarity
+- **ORM**: SQLAlchemy 2.0 with async support (asyncpg driver)
+- **Database Migrations**: Alembic for schema version control
 - **Vector Database**: Qdrant for vector storage and similarity search
 - **LLM Providers**: OpenAI and Cohere with factory pattern (supports custom OpenAI-compatible APIs)
 - **Template Engine**: Multi-language prompt template system with Python string.Template
@@ -80,9 +85,9 @@ The system uses a **Factory Pattern** for extensible provider management:
 - **File Handling**: aiofiles for async I/O operations
 - **Containerization**: Docker & Docker Compose
 - **Python Version**: 3.12+
-- **Additional Libraries**: pymongo, aiofiles, python-dotenv, python-multipart, qdrant-client, openai, cohere, langchain
+- **Additional Libraries**: asyncpg, sqlalchemy, alembic, aiofiles, python-dotenv, python-multipart, qdrant-client, openai, cohere, langchain
 
-## 📁 Project Structure
+## 📁 Project Structure 
 
 ```text
 src/
@@ -108,16 +113,23 @@ src/
 │   └── NLPController.py             # RAG logic (search, answer generation)
 ├── models/
 │   ├── __init__.py
-│   ├── BaseDataModel.py             # Base async MongoDB model
-│   ├── ChunkModel.py                # Chunks collection DAL (async)
-│   ├── ProjectModel.py              # Projects collection DAL (async)
-│   ├── AssetModel.py                # Assets collection DAL (async)
+│   ├── BaseDataModel.py             # Base async SQLAlchemy model
+│   ├── ChunkModel.py                # DataChunk DAL (async)
+│   ├── ProjectModel.py              # Project DAL (async)
+│   ├── AssetModel.py                # Asset DAL (async)
 │   ├── db_schemas/
-│   │   ├── __init__.py
-│   │   ├── chunks_schemas.py        # ChunkSchema with indexes
-│   │   ├── project_shemas.py        # ProjectSchema with indexes
-│   │   ├── asset.py                 # AssetSchema with indexes
-│   │   └── __pycache__/
+│   │   ├── __init__.py              # Public schema exports
+│   │   ├── rag/                     # RAG database schemas
+│   │   │   ├── alembic.ini          # Alembic configuration
+│   │   │   ├── alembic/             # Migration scripts
+│   │   │   │   ├── env.py           # Migration environment
+│   │   │   │   └── versions/        # Migration versions
+│   │   │   └── schemas/
+│   │   │       ├── __init__.py
+│   │   │       ├── rag_base.py      # SQLAlchemy Base
+│   │   │       ├── chunks_schemas.py # DataChunk model
+│   │   │       ├── project_shemas.py # Project model
+│   │   │       └── asset.py         # Asset model
 │   ├── enums/
 │   │   ├── __init__.py
 │   │   ├── ProcesseEnums.py         # Document type enums
@@ -157,10 +169,11 @@ src/
         └── {project_id}/            # Project-specific directories
 
 docker/
-├── docker-compose.yml               # MongoDB service definition
-├── .env.example                     # Environment template
-├── .gitignore                       # Docker-specific gitignore
-└── mongo-data/                      # MongoDB persistent storage
+├── docker-compose.yml               # PostgreSQL + MongoDB services
+├── .env                             # Database credentials
+├── DATABASE_CONNECTIONS.md          # Connection guide for DBeaver/pgAdmin
+├── QUICK_REFERENCE.txt              # Quick reference card
+└── postgres-data/                   # PostgreSQL persistent storage
 
 .gitignore                          # Root gitignore
 README.md                           # This file
@@ -171,7 +184,7 @@ LICENSE                            # Project license
 
 ### Base Endpoints
 
-- `GET /api/v1/` - Application information and health check
+- `GET /api/v1/` - Application information and health check health
 
 ### Data Management Endpoints
 
@@ -362,9 +375,13 @@ FILE_MAX_SIZE=50                    # Maximum file size in MB
 CHUNK_SIZE=1000                     # Default chunk size in characters
 CHUNK_OVERLAP=100                   # Default overlap between chunks
 
-# Database Configuration
-MONGO_URI=mongodb://root:example@localhost:27017
-MONGO_DB_NAME=rag_system_db
+# Database configuration
+POSTGRES_USERNAME=postgres
+POSTGRES_PASSWORD=minirag
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5433
+POSTGRES_MAIN_DATABASE=ai_vectors
+DATABASE_URL=postgresql+asyncpg://postgres:minirag@localhost:5433/ai_vectors
 
 # Vector Database Configuration
 VECTOR_DB_PROVIDER=QDRANT           # Vector database provider
@@ -391,12 +408,18 @@ GENERATION_DEFAULT_TEMPERATURE=0.1  # Temperature for text generation
 ### Docker Environment (.env in docker/)
 
 ```bash
-# MongoDB Credentials
+# PostgreSQL Configuration
+VECTOR_PGUSER=postgres
+VECTOR_PGPASSWORD=minirag
+VECTOR_PGDB=ai_vectors
+VECTOR_PGPORT=5433
+
+# MongoDB Configuration (if needed)
 MONGO_INITDB_ROOT_USERNAME=root
 MONGO_INITDB_ROOT_PASSWORD=example
 ```
 
-⚠️ **Security Note**: Change default MongoDB credentials in production!
+⚠️ **Security Note**: Change default database credentials in production!
 
 ## 📋 Prerequisites & Installation
 
@@ -405,16 +428,19 @@ MONGO_INITDB_ROOT_PASSWORD=example
 - Python 3.12+
 - Docker & Docker Compose
 - Git
+- PostgreSQL client (optional, for direct database access)
 
 ### Quick Start
 
 1. **Clone the repository:**
+
    ```bash
    git clone https://github.com/SaeedNeamtallah/Rag-System-Project.git
    cd Rag-System-Project
    ```
 
 2. **Create and activate virtual environment:**
+
    ```bash
    # On Linux/Mac
    python3 -m venv venv
@@ -426,83 +452,121 @@ MONGO_INITDB_ROOT_PASSWORD=example
    ```
 
 3. **Install dependencies:**
+
    ```bash
    cd src
    pip install -r requirements.txt
    ```
 
-4. **Start MongoDB with Docker Compose:**
+4. **Start PostgreSQL with Docker Compose:**
+
    ```bash
    cd ../docker
    docker-compose up -d
    ```
 
-5. **Create `.env` file in src/:**
+5. **Run database migrations:**
+
    ```bash
-   cd ../src
+   cd ../src/models/db_schemas/rag
+   alembic upgrade head
+   ```
+
+6. **Create `.env` file in src/:**
+
+   ```bash
+   cd ../../../
    # Edit the environment variables as shown in Configuration section
    ```
 
-6. **Run the application:**
+7. **Run the application:**
+
    ```bash
    uvicorn main:app --reload --host 0.0.0.0 --port 8000
    ```
 
-7. **Access the API:**
+8. **Access the API:**
    - API Documentation: `http://localhost:8000/docs`
    - ReDoc Documentation: `http://localhost:8000/redoc`
    - API Base URL: `http://localhost:8000/api/v1`
 
 ## 📊 Database Schema
 
-### Collections
+### PostgreSQL Tables (with pgvector extension)
 
-#### `projects` Collection
+#### `projects` Table
 
-```json
-{
-  "_id": ObjectId,
-  "project_id": "string (unique)",
-  "created_at": "ISO datetime",
-  "updated_at": "ISO datetime"
-}
+```sql
+CREATE TABLE projects (
+    project_id SERIAL PRIMARY KEY,
+    project_uuid UUID UNIQUE NOT NULL DEFAULT gen_random_uuid(),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE
+);
 ```
 
-#### `chunks` Collection
+#### `assets` Table
 
-```json
-{
-  "_id": ObjectId,
-  "chunk_text": "string",
-  "chunk_metadata": "object",
-  "chunk_order": "integer (≥ 1)",
-  "chunk_project_id": "ObjectId (ref: projects._id)",
-  "created_at": "ISO datetime",
-  "updated_at": "ISO datetime"
-}
+```sql
+CREATE TABLE assets (
+    asset_id SERIAL PRIMARY KEY,
+    asset_uuid UUID UNIQUE NOT NULL DEFAULT gen_random_uuid(),
+    asset_project_id INTEGER NOT NULL REFERENCES projects(project_id),
+    asset_type VARCHAR(50) NOT NULL,
+    asset_name VARCHAR(255) NOT NULL,
+    asset_size INTEGER,
+    asset_config JSONB,
+    asset_pushed_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE (asset_project_id, asset_name)
+);
 ```
 
-#### `assets` Collection
+#### `chunks` Table
 
-```json
-{
-  "_id": ObjectId,
-  "asset_project_id": "ObjectId (ref: projects._id)",
-  "asset_type": "string (e.g., 'file')",
-  "asset_name": "string (filename)",
-  "asset_size": "integer (bytes)",
-  "asset_config": "object (optional)",
-  "asset_pushed_at": "ISO datetime"
-}
+```sql
+CREATE TABLE chunks (
+    chunk_id SERIAL PRIMARY KEY,
+    chunk_uuid UUID UNIQUE NOT NULL DEFAULT gen_random_uuid(),
+    chunk_text TEXT NOT NULL,
+    chunk_metadata JSONB,
+    chunk_order INTEGER NOT NULL,
+    chunk_project_id INTEGER NOT NULL REFERENCES projects(project_id),
+    chunk_asset_id INTEGER NOT NULL REFERENCES assets(asset_id),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX ix_chunk_project_id ON chunks(chunk_project_id);
+CREATE INDEX ix_chunk_asset_id ON chunks(chunk_asset_id);
 ```
 
-### Indexes
+### Schema Features
 
-- `projects`: Unique index on `project_id`
-- `chunks`: Index on `chunk_project_id`
-- `assets`: Composite unique index on (`asset_project_id`, `asset_name`)
+- **UUID Support**: All tables have UUID fields for external references
+- **JSONB**: Flexible metadata storage for chunks and asset configurations
+- **Foreign Keys**: Proper relationships between projects, assets, and chunks
+- **Timestamps**: Automatic tracking of creation and update times
+- **Indexes**: Optimized for common query patterns
 
 ## 🐛 Recent Fixes & Improvements
+
+### v2.0.0 Updates - PostgreSQL Migration
+
+- ✅ **Database Migration**: Migrated from MongoDB to PostgreSQL 18.0 with pgvector extension
+- ✅ **SQLAlchemy Integration**: Implemented async SQLAlchemy 2.0 with asyncpg driver
+- ✅ **Alembic Migrations**: Added database versioning and schema migration support
+- ✅ **pgvector Extension**: Enabled vector similarity search capabilities in PostgreSQL
+- ✅ **Schema Refactoring**: Proper foreign key relationships between projects, assets, and chunks
+- ✅ **Async Models**: Updated all models to use async sessionmaker patterns
+- ✅ **Database Sessions**: Fixed session management - using `self.db_client()` correctly
+- ✅ **Asset Tracking**: Implemented proper asset creation before chunk insertion
+- ✅ **Import Structure**: Unified imports through `models.db_schemas` package
+- ✅ **Type Conversion**: Fixed project_id type handling (int vs str in path operations)
+- ✅ **Connection Documentation**: Created comprehensive guides for DBeaver/pgAdmin connections
+- ✅ **Vector Dimension Validation**: Added embedding dimension mismatch detection
+- ✅ **Error Handling**: Improved NOT NULL constraint handling and clearer error messages
 
 ### v1.1.0 Updates - RAG Implementation
 
@@ -521,11 +585,11 @@ MONGO_INITDB_ROOT_PASSWORD=example
 
 ### v1.0.0 Updates - Data Processing
 
-- ✅ Fixed data persistence: chunks and projects now properly saved to MongoDB
-- ✅ Implemented async factory pattern for all models (ChunkModel, ProjectModel, AssetModel)
+- ✅ Fixed data persistence: chunks and projects now properly saved to database
+- ✅ Implemented async factory pattern for all models
 - ✅ Added comprehensive error handling in all endpoints
-- ✅ Implemented proper MongoDB schema validation with Pydantic
-- ✅ Added automatic index creation for all collections
+- ✅ Implemented proper schema validation with Pydantic
+- ✅ Added automatic index creation for all tables
 - ✅ Fixed asset tracking with dedicated AssetModel
 - ✅ Improved file upload with validation and error responses
 - ✅ Added project lookup before processing with 404 handling
@@ -581,8 +645,13 @@ curl -X POST "http://localhost:8000/api/v1/nlp/generate" \
        "top_k": 5
      }'
 
-# 6. Verify chunks in MongoDB
-# Connect to MongoDB and check: db.chunks.find({"chunk_project_id": ObjectId("...")})
+# 6. Verify data in PostgreSQL
+# Option 1: Using psql
+docker exec -it vector-postgres psql -U postgres -d ai_vectors
+# SELECT * FROM projects WHERE project_id = 3;
+# SELECT COUNT(*) FROM chunks WHERE chunk_project_id = 3;
+
+# Option 2: Using DBeaver (see docker/DATABASE_CONNECTIONS.md)
 ```
 
 ## 🚀 Deployment

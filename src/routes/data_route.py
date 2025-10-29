@@ -1,16 +1,14 @@
 import logging
-from fastapi import APIRouter, HTTPException, Request, status, Depends, UploadFile
+from fastapi import APIRouter, status, UploadFile,Request
 from fastapi.responses import JSONResponse
-from typing import List, Optional
 from .schemas.dataproces_schemas import ProcessFileRequest 
 from controllers import DataController, ProcessControllers
-from helper import get_settings, Settings
 from langchain_community.document_loaders import TextLoader, PyPDFLoader
 import aiofiles
 import os
 from models import ProjectModel ,ChunkModel
-from models.db_schemas.chunks_schemas import ChunkSchema 
-from models.db_schemas.asset import Asset as AssetSchema
+from models.db_schemas import DataChunk 
+from models.db_schemas import Asset 
 from models.AssetModel import AssetModel
 
 
@@ -21,10 +19,10 @@ datarouter= APIRouter(
 )
 
 @datarouter.post("/upload/{project_id}")
-async def process_data(request: Request, project_id: str, file: UploadFile):
-    project_model = await ProjectModel.create_instance(db=request.app.state.db)
+async def process_data(request: Request, project_id: int, file: UploadFile):
+    project_model = await ProjectModel.create_instance(request.app.state.async_session)
     # Use get_or_create to automatically create project if it doesn't exist
-    project = await project_model.get_or_create(project_id)
+    project = await project_model.get_project_or_create_one(project_id)
 
     data_controller = DataController()
     is_valid, response_status = data_controller.validate_file(file)
@@ -53,9 +51,9 @@ async def process_data(request: Request, project_id: str, file: UploadFile):
             content={"status": "file_upload_failed", "message": "Failed to upload file."}
         )
 
-    asset_model = await AssetModel.create_instance(db=request.app.state.db)
-    asset_resources = AssetSchema(
-        asset_project_id=project.id,
+    asset_model = await AssetModel.create_instance(request.app.state.async_session)
+    asset_resources = Asset(
+        asset_project_id=project.project_id,
         asset_type="file",
         asset_name=unique_filename,
         asset_size=os.path.getsize(unique_file_path))
@@ -66,19 +64,19 @@ async def process_data(request: Request, project_id: str, file: UploadFile):
         content={"status": "file_upload_success", 
                  "file_path": f"{unique_file_path}",
                  "file_id": f"{unique_filename}",
-                 "asset_id": str(asset_record.id)
+                 "asset_id": str(asset_record.asset_id)
                  }
     )
 
 
 
 @datarouter.post("/processall/{project_id}")
-async def process_all_files(request: Request, project_id: str):
+async def process_all_files(request: Request, project_id: int):
     data_controller = DataController()
     process_controller = ProcessControllers()
 
-    project_model = await ProjectModel.create_instance(db=request.app.state.db)
-    project = await project_model.get_by_project_id(project_id)
+    project_model = await ProjectModel.create_instance(request.app.state.async_session)
+    project = await project_model.get_project_or_create_one(project_id)
 
     if not project:
         logging.warning(f"Project not found for project_id: {project_id}")
@@ -124,7 +122,7 @@ async def process_all_files(request: Request, project_id: str):
         )
     
     # Get the project's ObjectId for chunk references
-    project_object_id = project.id if hasattr(project, 'id') and project.id else None
+    project_object_id = project.project_id if hasattr(project, 'project_id') and project.project_id else None
     if not project_object_id:
         logging.error(f"Project {project_id} has no valid ObjectId")
         return JSONResponse(
@@ -132,15 +130,15 @@ async def process_all_files(request: Request, project_id: str):
             content={"status": "error", "message": "Project ObjectId not found."}
         )
     
-    # Convert langchain Document objects to ChunkSchema objects
-    file_chunks = [ChunkSchema(
+    # Convert langchain Document objects to DataChunk objects
+    file_chunks = [DataChunk(
         chunk_text=chunk.page_content,
         chunk_metadata=chunk.metadata,
         chunk_order=idx + 1,
         chunk_project_id=project_object_id
     ) for idx, chunk in enumerate(all_chunks)]
 
-    chunk_model = await ChunkModel.create_instance(db=request.app.state.db)
+    chunk_model = await ChunkModel.create_instance(db=request.app.state.async_session)
     inserted_chunks = await chunk_model.insert_many_chunks(file_chunks)
     logging.info(f"Inserted {len(inserted_chunks)} chunks into the database")
     
@@ -160,14 +158,14 @@ async def process_all_files(request: Request, project_id: str):
     )
 
 @datarouter.post("/processone/{project_id}")
-async def process_one_file(request: Request, project_id: str, body: ProcessFileRequest):
+async def process_one_file(request: Request, project_id: int, body: ProcessFileRequest):
     file_name = body.file_id  # file_id is actually the filename
     chunk_size = body.chunk_size
     overlap_size = body.overlap_size
     do_reset = body.do_reset
 
-    project_model = await ProjectModel.create_instance(db=request.app.state.db)
-    project = await project_model.get_by_project_id(project_id)
+    project_model = await ProjectModel.create_instance(request.app.state.async_session)
+    project = await project_model.get_project_or_create_one(project_id)
 
 
     if not project:
@@ -225,7 +223,7 @@ async def process_one_file(request: Request, project_id: str, body: ProcessFileR
         )
     
     # Get the project's ObjectId for chunk references
-    project_object_id = project.id if hasattr(project, 'id') and project.id else None
+    project_object_id = project.project_id if hasattr(project, 'project_id') and project.project_id else None
     if not project_object_id:
         logging.error(f"Project {project_id} has no valid ObjectId")
         return JSONResponse(
@@ -233,14 +231,32 @@ async def process_one_file(request: Request, project_id: str, body: ProcessFileR
             content={"status": "error", "message": "Project ObjectId not found."}
         )
     
-    file_chunks = [ChunkSchema(
+    # Get or create Asset record for this file
+    asset_model = await AssetModel.create_instance(request.app.state.async_session)
+    asset_record = await asset_model.get_asset_record(project_object_id, file_name)
+    
+    if not asset_record:
+        # Create new asset if it doesn't exist
+        asset_record = Asset(
+            asset_project_id=project_object_id,
+            asset_type="file",
+            asset_name=file_name,
+            asset_size=os.path.getsize(file_path)
+        )
+        asset_record = await asset_model.create_asset(asset_record)
+        logging.info(f"Created new asset record for file: {file_name}, asset_id: {asset_record.asset_id}")
+    else:
+        logging.info(f"Using existing asset record for file: {file_name}, asset_id: {asset_record.asset_id}")
+    
+    file_chunks = [DataChunk(
         chunk_text=chunk.page_content,
         chunk_metadata=chunk.metadata,
         chunk_order=idx + 1,
-        chunk_project_id=project_object_id
+        chunk_project_id=project_object_id,
+        chunk_asset_id=asset_record.asset_id
     ) for idx, chunk in enumerate(chunks)]
 
-    chunk_model = await ChunkModel.create_instance(db=request.app.state.db)
+    chunk_model = await ChunkModel.create_instance(request.app.state.async_session)
     
     
     if do_reset:
@@ -249,7 +265,7 @@ async def process_one_file(request: Request, project_id: str, body: ProcessFileR
         logging.info(f"Deleted {deleted_count} existing chunks for project_id: {project_id} due to reset request.")
 
     inserted_chunks = await chunk_model.insert_many_chunks(file_chunks)
-    logging.info(f"Inserted {len(inserted_chunks)} chunks into the database for file: {file_name}")
+    logging.info(f"Inserted {inserted_chunks} chunks into the database for file: {file_name}")
 
 
     logging.info(f"Successfully processed file {file_name}, created {len(chunks)} chunks.")

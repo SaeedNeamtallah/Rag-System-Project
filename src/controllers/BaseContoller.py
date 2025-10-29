@@ -10,12 +10,12 @@ class BaseController:
         self.base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Parent directory of the current file
         self.file_path = os.path.join(self.base_path, 'assets/files')
 
-    def get_file_path(self, project_id: str, file_name: str) -> str:
-        return os.path.join(self.file_path, project_id, file_name)
+    def get_file_path(self, project_id: int, file_name: str) -> str:
+        return os.path.join(self.file_path, str(project_id), file_name)
         # Example: /path/to/current/directory/assets/files/{project_id}/{file_name}
 
-    def get_project_path(self, project_id: str) -> str:
-        project_dir = os.path.join(self.file_path, project_id)
+    def get_project_path(self, project_id: int) -> str:
+        project_dir = os.path.join(self.file_path, str(project_id))
         if not os.path.exists(project_dir):
             os.makedirs(project_dir)
         return project_dir

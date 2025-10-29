@@ -15,11 +15,11 @@ router = APIRouter(
 )
 
 @router.post("/push/{project_id}")
-async def push_endpoint(project_id: str, req: Request, payload: PushRequest):
-    project_model = await ProjectModel.create_instance(db=req.app.state.db)
-    chunk_model = await ChunkModel.create_instance(db=req.app.state.db)
+async def push_endpoint(project_id: int, req: Request, payload: PushRequest):
+    project_model = await ProjectModel.create_instance(req.app.state.async_session)
+    chunk_model = await ChunkModel.create_instance(req.app.state.async_session)
 
-    project = await project_model.get_or_create(project_id=project_id)
+    project = await project_model.get_project_or_create_one(project_id)
     if not project:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -37,7 +37,7 @@ async def push_endpoint(project_id: str, req: Request, payload: PushRequest):
     # 4) reset 
     if payload.do_reset:
         nlp_controller.reset_vector_db_collection(project=project)
-        logger.info("Reset vector DB collection for project %s", project.id)
+        logger.info("Reset vector DB collection for project %s", project.project_id)
 
     # 5) paginate + index all pages
     page_no = max(payload.page or 1, 1)
@@ -47,7 +47,7 @@ async def push_endpoint(project_id: str, req: Request, payload: PushRequest):
     while True:
         # اعمل جلب صفحة
         chunk_list = await chunk_model.get_project_chunks_paginated(
-            project_object_id=project.id,
+            project_object_id=project.project_id,
             page=page_no,
             page_size=page_size
         )
@@ -80,7 +80,7 @@ async def push_endpoint(project_id: str, req: Request, payload: PushRequest):
         total_indexed += indexed_now
         logger.info(
             "Indexed %s chunks (page=%s, page_size=%s) into vector DB for project %s",
-            indexed_now, page_no, page_size, project.id
+            indexed_now, page_no, page_size, project.project_id
         )
         #next page
         page_no += 1
@@ -98,10 +98,10 @@ async def push_endpoint(project_id: str, req: Request, payload: PushRequest):
 
 
 @router.get("/index/info/{project_id}")
-async def get_index_info_endpoint(project_id: str, req: Request):
-    project_model = await ProjectModel.create_instance(db=req.app.state.db)
+async def get_index_info_endpoint(project_id: int, req: Request):
+    project_model = await ProjectModel.create_instance(req.app.state.async_session)
 
-    project = await project_model.get_or_create(project_id=project_id)
+    project = await project_model.get_project_or_create_one(project_id)
     if not project:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -141,10 +141,10 @@ async def get_index_info_endpoint(project_id: str, req: Request):
 
 
 @router.post("/search/{project_id}")
-async def search_endpoint(project_id: str, req: Request, payload: SearchRequest):
-    project_model = await ProjectModel.create_instance(db=req.app.state.db)
+async def search_endpoint(project_id: int, req: Request, payload: SearchRequest):
+    project_model = await ProjectModel.create_instance(req.app.state.async_session)
 
-    project = await project_model.get_or_create(project_id=project_id)
+    project = await project_model.get_project_or_create_one(project_id)
     if not project:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -209,10 +209,10 @@ async def search_endpoint(project_id: str, req: Request, payload: SearchRequest)
 
 
 @router.post("/generate/{project_id}")
-async def generate_endpoint(project_id: str, req: Request, payload: SearchRequest):
-    project_model = await ProjectModel.create_instance(db=req.app.state.db)
+async def generate_endpoint(project_id: int, req: Request, payload: SearchRequest):
+    project_model = await ProjectModel.create_instance(req.app.state.async_session)
 
-    project = await project_model.get_or_create(project_id=project_id)
+    project = await project_model.get_project_or_create_one(project_id)
     if not project:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
