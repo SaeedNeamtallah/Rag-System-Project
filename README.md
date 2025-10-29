@@ -115,9 +115,9 @@ src/
 │   ├── AssetModel.py                # Assets collection DAL (async)
 │   ├── db_schemas/
 │   │   ├── __init__.py
-│   │   ├── chunks_schemas.py        # ChunkSchema with indexes
-│   │   ├── project_shemas.py        # ProjectSchema with indexes
-│   │   ├── asset.py                 # AssetSchema with indexes
+│   │   ├── chunks_schemas.py        # DataChunk with indexes
+│   │   ├── project_shemas.py        # Project with indexes
+│   │   ├── asset.py                 # Asset with indexes
 │   │   └── __pycache__/
 │   ├── enums/
 │   │   ├── __init__.py

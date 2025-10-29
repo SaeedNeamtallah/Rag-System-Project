@@ -1,5 +1,5 @@
 from .BaseContoller import BaseController
-from models.db_schemas import ProjectSchema ,ChunkSchema
+from models.db_schemas import DataChunk, Project
 from stores.llm.LLMEnums import DocumentTypeEnum
 from typing import List
 import json
@@ -21,30 +21,47 @@ class NLPController(BaseController):
         logger.info(f"Collection name for project {project_id}: {collection_name}")
         return collection_name
     
-    def reset_vector_db_collection(self,project: ProjectSchema):
-        collection_name = self.create_collection_name(project.id)
+    def reset_vector_db_collection(self,project: Project):
+        collection_name = self.create_collection_name(project.project_id)
         self.vector_client.delete_collection(collection_name)
         self.vector_client.create_collection(collection_name, embedding_size=self.embedding_client.embedding_size)
 
-    def get_vector_db_collection_info(self,project: ProjectSchema):
-        collection_name = self.create_collection_name(project.id)
+    def get_vector_db_collection_info(self,project: Project):
+        collection_name = self.create_collection_name(project.project_id)
         collection_info = self.vector_client.get_collection_info(collection_name)
 
         return json.loads(json.dumps(collection_info, default=lambda o: o.__dict__))
 
-    def index_into_vector_db(self,project: ProjectSchema, chunks: List[ChunkSchema],chunk_ids: List[int],do_reset: bool = False):
-        collection_name = self.create_collection_name(project.id)
+    def index_into_vector_db(self,project: Project, chunks: List[DataChunk],chunk_ids: List[int],do_reset: bool = False):
+        collection_name = self.create_collection_name(project.project_id)
         vectors = []
         ids = []
         metadatas = []
-        #create collection if not exists
-        _= self.vector_client.create_collection(collection_name,embedding_size=self.embedding_client.embedding_size)
+        
+        # Check if collection exists and validate embedding size
+        if self.vector_client.is_collection_existed(collection_name):
+            try:
+                collection_info = self.vector_client.get_collection_info(collection_name)
+                existing_size = collection_info.config.params.vectors.size
+                expected_size = self.embedding_client.embedding_size
+                
+                if existing_size != expected_size:
+                    error_msg = f"Collection '{collection_name}' exists with dimension {existing_size}, but current embedding model uses {expected_size}. Please use do_reset=true to recreate the collection."
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+            except AttributeError:
+                # If we can't get the size, just log a warning and continue
+                logger.warning(f"Could not validate embedding dimensions for collection '{collection_name}'")
+        
+        # Create collection if not exists (will skip if already exists)
+        _ = self.vector_client.create_collection(collection_name, embedding_size=self.embedding_client.embedding_size)
+        
         for chunk,chunk_id in zip(chunks,chunk_ids):
             embedding = self.embedding_client.embed_text(chunk.chunk_text,document_type=DocumentTypeEnum.DOCUMENT.value)
             vectors.append(embedding)
             ids.append(chunk_id)
             metadatas.append({
-                "chunk_project_id": str(project.id),
+                "chunk_project_id": str(project.project_id),
                 "chunk_text": chunk.chunk_text,
                 "chunk_order": chunk.chunk_order,
                 "chunk_metadata": chunk.chunk_metadata
@@ -61,8 +78,8 @@ class NLPController(BaseController):
             "indexed_count": len(chunks)
         }
     
-    def search_vector_db(self,project: ProjectSchema,text: str,limit: int =5):
-        collection_name = self.create_collection_name(project.id)
+    def search_vector_db(self,project: Project,text: str,limit: int =5):
+        collection_name = self.create_collection_name(project.project_id)
         query_embedding = self.embedding_client.embed_text(text,document_type=DocumentTypeEnum.QUERY.value)
         search_results = self.vector_client.search_by_vector(
             collection_name=collection_name,
@@ -71,7 +88,7 @@ class NLPController(BaseController):
         )
         return search_results
     
-    def answer_rag_question(self,project: ProjectSchema,query: str,limit: int =5):
+    def answer_rag_question(self,project: Project,query: str,limit: int =5):
         # step1: search vector db
         search_results = self.search_vector_db(project,query,limit)
         if not search_results:

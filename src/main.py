@@ -9,13 +9,15 @@ from contextlib import asynccontextmanager
 import logging
 
 from fastapi import FastAPI
-from motor import motor_asyncio
-
 from routes import base_router, datarouter ,nlp_router
 from helper import get_settings
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
+
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 # Configure logging
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -33,21 +35,23 @@ async def lifespan(app: FastAPI):
     """
     settings = get_settings()
 
-    # Startup - MongoDB Connection
-    logger.info("Connecting to MongoDB...")
+    # Startup - PostgreSQL Connection
+    logger.info("Connecting to PostgreSQL...")
     try:
-        client = motor_asyncio.AsyncIOMotorClient(settings.MONGO_URI)
-        db = client[settings.MONGO_DB_NAME]
+        # Use asyncpg driver for async PostgreSQL connections
+        postgres_conn = f"postgresql+asyncpg://{settings.POSTGRES_USERNAME}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_MAIN_DATABASE}"
 
-        # Verify connection
-        await client.admin.command("ping")
-        logger.info(f"✅ Connected to MongoDB: {settings.MONGO_DB_NAME}")
+        app.state.db_engine = create_async_engine(postgres_conn, echo=True)
+        app.state.async_session = sessionmaker(
+            bind=app.state.db_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+        logger.info("✅ Connected to PostgreSQL")
 
-        # Store in app state
-        app.state.db = db
-        app.state.client = client
+
     except Exception as e:
-        logger.error(f"❌ Failed to connect to MongoDB: {e}")
+        logger.error(f"❌ Failed to connect to PostgreSQL: {e}")
         raise
 
     # Startup - LLM Provider Factory
@@ -64,8 +68,12 @@ async def lifespan(app: FastAPI):
         app.state.embedding_client.set_embedding_model(
             settings.EMBEDDING_MODEL_ID, settings.EMBEDDING_SIZE
         )
-
-        logger.info("✅ LLM providers initialized")
+        
+        logger.info(f"✅ LLM providers initialized")
+        logger.info(f"   Generation: {settings.GENERATION_BACKEND} / {settings.GENERATION_MODEL_ID}")
+        logger.info(f"   Embedding: {settings.EMBEDDING_BACKEND} / {settings.EMBEDDING_MODEL_ID} / {settings.EMBEDDING_SIZE}D")
+        logger.info(f"   Embedding client type: {type(app.state.embedding_client).__name__}")
+        logger.info(f"   Embedding client size: {app.state.embedding_client.embedding_size}")
     except Exception as e:
         logger.error(f"❌ Failed to initialize LLM providers: {e}")
         raise
