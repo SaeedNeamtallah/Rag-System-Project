@@ -13,6 +13,8 @@ system_prompt = Template("\n".join([
     "You have to generate response in the same language as the user's query.",
     "Be polite and respectful to the user.",
     "Be precise and concise in your response. Avoid unnecessary information.",
+    "answer in same language as the question.",
+    "Use bullet points for lists and keep answers structured.",
 ]))
 
 #### Document ####

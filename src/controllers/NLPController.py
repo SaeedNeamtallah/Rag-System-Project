@@ -124,8 +124,9 @@ class NLPController(BaseController):
         logger.info(f"Full prompt length: {len(full_prompt)}")
         
         # Log the complete message structure
-        user_message_preview = full_prompt[:300] + "..." if len(full_prompt) > 300 else full_prompt
-        logger.info(f"Will send to LLM - System: {system_message.get('content', '')[:100]}... | User: {user_message_preview}")
+        # user_message_preview = full_prompt[:300] + "..." if len(full_prompt) > 300 else full_prompt
+        user_message_preview = full_prompt
+        logger.info(f"Will send to LLM - System: {system_message.get('content', '')}... | User: {user_message_preview}")
 
         answer = self.generation_client.generate_text(
             prompt=full_prompt,
