@@ -1,3 +1,9 @@
+"""
+NLP and RAG routes for vector database operations and answer generation.
+
+This module handles document indexing, similarity search, and RAG-based
+question answering using vector databases and LLM providers.
+"""
 from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
 from .schemas.nlp import PushRequest, SearchRequest
@@ -16,6 +22,7 @@ router = APIRouter(
 
 @router.post("/push/{project_id}")
 async def push_endpoint(project_id: int, req: Request, payload: PushRequest):
+    """Index project documents to vector database with embeddings."""
     project_model = await ProjectModel.create_instance(req.app.state.async_session)
     chunk_model = await ChunkModel.create_instance(req.app.state.async_session)
 
@@ -31,13 +38,13 @@ async def push_endpoint(project_id: int, req: Request, payload: PushRequest):
         vector_client=req.app.state.vector_db_client,
         generation_client=req.app.state.generation_client,
         embedding_client=req.app.state.embedding_client,
-        templete_parser=req.app.state.template_parser
+        templete_parser=req.app.state.template_parser,
+        settings=req.app.state.settings
     )
 
     # 4) reset 
     if payload.do_reset:
-        nlp_controller.reset_vector_db_collection(project=project)
-        logger.info("Reset vector DB collection for project %s", project.project_id)
+        await nlp_controller.reset_vector_db_collection(project=project)
 
     # 5) paginate + index all pages
     page_no = max(payload.page or 1, 1)
@@ -45,7 +52,7 @@ async def push_endpoint(project_id: int, req: Request, payload: PushRequest):
     total_indexed = 0
 
     while True:
-        # اعمل جلب صفحة
+        # Fetch chunks page by page
         chunk_list = await chunk_model.get_project_chunks_paginated(
             project_object_id=project.project_id,
             page=page_no,
@@ -61,9 +68,10 @@ async def push_endpoint(project_id: int, req: Request, payload: PushRequest):
                 )
             break
 
-        chunk_ids = list(range((page_no - 1) * page_size, (page_no - 1) * page_size + len(chunk_list)))
+        # Extract actual chunk_ids from the database records
+        chunk_ids = [chunk.chunk_id for chunk in chunk_list]
 
-        index_result = nlp_controller.index_into_vector_db(
+        index_result = await nlp_controller.index_into_vector_db(
             project=project,
             chunks=chunk_list,
             chunk_ids=chunk_ids,
@@ -78,11 +86,7 @@ async def push_endpoint(project_id: int, req: Request, payload: PushRequest):
             )
 
         total_indexed += indexed_now
-        logger.info(
-            "Indexed %s chunks (page=%s, page_size=%s) into vector DB for project %s",
-            indexed_now, page_no, page_size, project.project_id
-        )
-        #next page
+        # Next page
         page_no += 1
 
     return JSONResponse(
@@ -99,6 +103,7 @@ async def push_endpoint(project_id: int, req: Request, payload: PushRequest):
 
 @router.get("/index/info/{project_id}")
 async def get_index_info_endpoint(project_id: int, req: Request):
+    """Get vector database collection information for a project."""
     project_model = await ProjectModel.create_instance(req.app.state.async_session)
 
     project = await project_model.get_project_or_create_one(project_id)
@@ -112,11 +117,12 @@ async def get_index_info_endpoint(project_id: int, req: Request):
         vector_client=req.app.state.vector_db_client,
         generation_client=req.app.state.generation_client,
         embedding_client=req.app.state.embedding_client,
-        templete_parser=req.app.state.template_parser
+        templete_parser=req.app.state.template_parser,
+        settings=req.app.state.settings
     )
 
     try:
-        collection_info = nlp_controller.get_vector_db_collection_info(project=project)
+        collection_info = await nlp_controller.get_vector_db_collection_info(project=project)
         if collection_info is None:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -142,6 +148,7 @@ async def get_index_info_endpoint(project_id: int, req: Request):
 
 @router.post("/search/{project_id}")
 async def search_endpoint(project_id: int, req: Request, payload: SearchRequest):
+    """Search for similar documents using vector similarity."""
     project_model = await ProjectModel.create_instance(req.app.state.async_session)
 
     project = await project_model.get_project_or_create_one(project_id)
@@ -155,12 +162,13 @@ async def search_endpoint(project_id: int, req: Request, payload: SearchRequest)
         vector_client=req.app.state.vector_db_client,
         generation_client=req.app.state.generation_client,
         embedding_client=req.app.state.embedding_client,
-        templete_parser=req.app.state.template_parser
+        templete_parser=req.app.state.template_parser,
+        settings=req.app.state.settings
         
     )
 
     try:
-        search_results = nlp_controller.search_vector_db(
+        search_results = await nlp_controller.search_vector_db(
             project=project,
             text=payload.text,
             limit=payload.limit or 5
@@ -179,15 +187,31 @@ async def search_endpoint(project_id: int, req: Request, payload: SearchRequest)
                 content={"message": f"No search results found for query in project {project_id}"}
             )
 
-        # Serialize Qdrant search results
-        serialized_results = [
-            {
-                "id": str(result.id),
-                "score": result.score,
-                "payload": result.payload
+        # Serialize vector search results - return only text and score
+        serialized_results = []
+        for result in search_results:
+            # PGVector returns RetrievedDocument with text and score
+            if hasattr(result, 'text'):
+                serialized_results.append({
+                    "text": result.text,
+                    "score": result.score
+                })
+            # Qdrant returns ScoredPoint - extract text from payload
+            elif hasattr(result, 'payload'):
+                serialized_results.append({
+                    "text": result.payload.get("chunk_text", ""),
+                    "score": result.score
+                })
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "project_id": project_id,
+                "query": payload.text,
+                "results_count": len(serialized_results),
+                "results": serialized_results
             }
-            for result in search_results
-        ]
+        )
 
     except Exception as e:
         logger.error("Error searching in project %s: %s", project_id, e, exc_info=True)
@@ -196,20 +220,11 @@ async def search_endpoint(project_id: int, req: Request, payload: SearchRequest)
             content={"message": f"Search failed: {str(e)}"}
         )
 
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={
-            "project_id": project_id,
-            "query": payload.text,
-            "results_count": len(serialized_results),
-            "results": serialized_results
-        }
-    )
-
 
 
 @router.post("/generate/{project_id}")
 async def generate_endpoint(project_id: int, req: Request, payload: SearchRequest):
+    """Generate AI-powered answers using RAG (Retrieval-Augmented Generation)."""
     project_model = await ProjectModel.create_instance(req.app.state.async_session)
 
     project = await project_model.get_project_or_create_one(project_id)
@@ -223,13 +238,15 @@ async def generate_endpoint(project_id: int, req: Request, payload: SearchReques
         vector_client=req.app.state.vector_db_client,
         generation_client=req.app.state.generation_client,
         embedding_client=req.app.state.embedding_client,
-        templete_parser=req.app.state.template_parser
+        templete_parser=req.app.state.template_parser,
+        settings=req.app.state.settings
     )
 
     try:
-        answer, full_prompt, chat_history = nlp_controller.answer_rag_question(
+        answer, full_prompt, chat_history = await nlp_controller.answer_rag_question(
             project=project,
-            query=payload.text
+            query=payload.text,
+            limit=payload.limit or 5
         )
 
         if answer is None:

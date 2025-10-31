@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     GENERATION_DEFAULT_MAX_TOKENS: int
     GENERATION_DEFAULT_TEMPERATURE: float
 
+    # ========================= RAG Config =========================
+    RAG_MAX_PROMPT_LENGTH: int = 3000  # Maximum prompt length
+    RAG_MAX_DOCUMENTS: int = 5  # Maximum number of documents
+
     # ========================= DB Config =========================
     POSTGRES_USERNAME: str
     POSTGRES_PASSWORD: str
@@ -38,6 +42,7 @@ class Settings(BaseSettings):
     VECTOR_DB_BACKEND : str
     VECTOR_DB_PATH : str
     VECTOR_DB_DISTANCE_METHOD: str = None
+    PGVECTOR_INDEX_THRESHOLD: int = 100  # Minimum records before creating index
 
     @property
     def EMBEDDING_SIZE(self) -> int:

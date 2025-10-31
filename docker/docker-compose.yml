@@ -1,18 +1,4 @@
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: mongodb
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo-data:/data/db
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-    networks:
-      - backend
-    restart: always
-
   vector_db:
     image: pgvector/pgvector:0.8.1-pg18-trixie
     container_name: vector-postgres
@@ -38,5 +24,4 @@ networks:
     driver: bridge
 
 volumes:
-  mongo-data:
   vector_data:
