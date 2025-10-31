@@ -1,3 +1,9 @@
+"""
+NLP and RAG routes for vector database operations and answer generation.
+
+This module handles document indexing, similarity search, and RAG-based
+question answering using vector databases and LLM providers.
+"""
 from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
 from .schemas.nlp import PushRequest, SearchRequest
@@ -16,6 +22,7 @@ router = APIRouter(
 
 @router.post("/push/{project_id}")
 async def push_endpoint(project_id: int, req: Request, payload: PushRequest):
+    """Index project documents to vector database with embeddings."""
     project_model = await ProjectModel.create_instance(req.app.state.async_session)
     chunk_model = await ChunkModel.create_instance(req.app.state.async_session)
 
@@ -96,6 +103,7 @@ async def push_endpoint(project_id: int, req: Request, payload: PushRequest):
 
 @router.get("/index/info/{project_id}")
 async def get_index_info_endpoint(project_id: int, req: Request):
+    """Get vector database collection information for a project."""
     project_model = await ProjectModel.create_instance(req.app.state.async_session)
 
     project = await project_model.get_project_or_create_one(project_id)
@@ -140,6 +148,7 @@ async def get_index_info_endpoint(project_id: int, req: Request):
 
 @router.post("/search/{project_id}")
 async def search_endpoint(project_id: int, req: Request, payload: SearchRequest):
+    """Search for similar documents using vector similarity."""
     project_model = await ProjectModel.create_instance(req.app.state.async_session)
 
     project = await project_model.get_project_or_create_one(project_id)
@@ -215,6 +224,7 @@ async def search_endpoint(project_id: int, req: Request, payload: SearchRequest)
 
 @router.post("/generate/{project_id}")
 async def generate_endpoint(project_id: int, req: Request, payload: SearchRequest):
+    """Generate AI-powered answers using RAG (Retrieval-Augmented Generation)."""
     project_model = await ProjectModel.create_instance(req.app.state.async_session)
 
     project = await project_model.get_project_or_create_one(project_id)

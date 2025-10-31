@@ -1,8 +1,9 @@
 """
 FastAPI application for RAG System.
 
-This module initializes the FastAPI application with MongoDB, LLM providers,
-and VectorDB providers for document processing and retrieval.
+This module initializes the FastAPI application with PostgreSQL, LLM providers,
+and VectorDB providers for document processing, embedding generation, and 
+retrieval-augmented generation.
 """
 
 from contextlib import asynccontextmanager
@@ -36,6 +37,7 @@ logging.getLogger('httpx').setLevel(logging.WARNING)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Manage application lifespan: startup and shutdown operations."""
 
     settings = get_settings()
     

@@ -17,8 +17,8 @@ A robust Retrieval-Augmented Generation (RAG) system built with FastAPI that ena
                         ▼                                 ▼               ▼
                 ┌───────────────┐              ┌──────────────┐  ┌──────────────┐
                 │  PostgreSQL   │              │ LLM Providers│  │ VectorDB     │
-                │  + pgvector   │              │ (OpenAI,     │  │ (Qdrant)     │
-                │  (Chunks,     │              │  Cohere)     │  │              │
+                │  + pgvector   │              │ (OpenAI,     │  │ (PGVector/   │
+                │  (Chunks,     │              │  Cohere)     │  │  Qdrant)     │
                 │   Projects,   │              │              │  │              │
                 │   Assets)     │              │              │  │              │
                 └───────────────┘              └──────────────┘  └──────────────┘
@@ -46,7 +46,7 @@ A robust Retrieval-Augmented Generation (RAG) system built with FastAPI that ena
 1. **Document Upload** → File validation → Unique naming → Project storage
 2. **Document Processing** → Content extraction → Text chunking → Metadata preservation
 3. **Data Storage** → PostgreSQL (via SQLAlchemy async) → Project organization → Asset tracking
-4. **Vector Embeddings** → LLM Provider (Cohere/OpenAI) → Generate embeddings → Store in Qdrant VectorDB
+4. **Vector Embeddings** → LLM Provider (Cohere/OpenAI) → Generate embeddings → Store in VectorDB (PGVector or Qdrant)
 5. **Similarity Search** → Query vectors → VectorDB search → Retrieve top-k relevant chunks
 6. **Answer Generation** → Prompt construction with context → LLM generation → AI-powered answers
 
@@ -66,9 +66,10 @@ The system uses a **Factory Pattern** for extensible provider management:
 
 - Abstract `VectorDBInterface` defines the contract
 - `VectorDBProviderFactory` creates provider instances
-- Qdrant implementation for vector storage
+- **PGVector** implementation for PostgreSQL with pgvector extension
+- **Qdrant** implementation for standalone vector storage
 - Support for collection management and similarity search
-- Configurable distance metrics (cosine, dot product)
+- Configurable distance metrics (cosine, dot product, L2)
 
 ## 🛠️ Technical Stack
 
@@ -76,7 +77,7 @@ The system uses a **Factory Pattern** for extensible provider management:
 - **Database**: PostgreSQL 18.0 with pgvector extension (v0.8.1) for vector similarity
 - **ORM**: SQLAlchemy 2.0 with async support (asyncpg driver)
 - **Database Migrations**: Alembic for schema version control
-- **Vector Database**: Qdrant for vector storage and similarity search
+- **Vector Database**: PGVector (PostgreSQL) or Qdrant for vector storage and similarity search
 - **LLM Providers**: OpenAI and Cohere with factory pattern (supports custom OpenAI-compatible APIs)
 - **Template Engine**: Multi-language prompt template system with Python string.Template
 - **Document Processing**: LangChain (text splitting, document loading)
@@ -163,7 +164,8 @@ src/
 │       ├── VectorDBProviderFactory.py # Factory for VectorDB providers
 │       └── providers/
 │           ├── __init__.py
-│           └── QdrantDBProvider.py  # Qdrant implementation
+│           ├── QdrantDBProvider.py  # Qdrant implementation
+│           └── PGVectorProvider.py  # PostgreSQL pgvector implementation
 └── assets/
     └── files/                       # File storage (organized by project)
         └── {project_id}/            # Project-specific directories
@@ -191,7 +193,7 @@ LICENSE                            # Project license
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/v1/data/upload/{project_id}` | Upload files to a project (returns asset_id) |
-| `POST` | `/api/v1/data/processall/{project_id}` | Process all files in project, save chunks to MongoDB |
+| `POST` | `/api/v1/data/processall/{project_id}` | Process all files in project, save chunks to PostgreSQL |
 | `POST` | `/api/v1/data/processone/{project_id}` | Process single file, save chunks with optional reset |
 
 ### NLP/RAG Endpoints
@@ -343,7 +345,7 @@ The RAG system follows a complete pipeline from document upload to AI-powered an
 1. **Upload Documents**: Upload PDF or text files to project-specific directories
 2. **Process & Chunk**: Extract text and split into semantic chunks with overlap
 3. **Generate Embeddings**: Create vector embeddings using Cohere or OpenAI
-4. **Store Vectors**: Index embeddings in Qdrant vector database for similarity search
+4. **Store Vectors**: Index embeddings in vector database (PGVector or Qdrant) for similarity search
 5. **Query Processing**: Convert user queries into embeddings
 6. **Retrieve Context**: Find top-k most relevant document chunks via vector similarity
 7. **Prompt Construction**: Build context-aware prompts with multi-language templates
@@ -362,64 +364,8 @@ The RAG system follows a complete pipeline from document upload to AI-powered an
 
 ### Environment Variables
 
-Create a `.env` file in the `src/` directory with the following variables:
+Create a `.env` file in the `src/` directory with the following variables (see `src/.env.example` for a template):
 
-```bash
-# Application Configuration
-APP_NAME=RAG-System
-APP_VERSION=1.0.0
-
-# File Upload Configuration
-FILE_ALLOWED_TYPES=["application/pdf", "text/plain"]
-FILE_MAX_SIZE=50                    # Maximum file size in MB
-CHUNK_SIZE=1000                     # Default chunk size in characters
-CHUNK_OVERLAP=100                   # Default overlap between chunks
-
-# Database configuration
-POSTGRES_USERNAME=postgres
-POSTGRES_PASSWORD=minirag
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5433
-POSTGRES_MAIN_DATABASE=ai_vectors
-DATABASE_URL=postgresql+asyncpg://postgres:minirag@localhost:5433/ai_vectors
-
-# Vector Database Configuration
-VECTOR_DB_PROVIDER=QDRANT           # Vector database provider
-VECTOR_DB_PATH=./assets/files/qdrant_db  # Path for Qdrant storage
-VECTOR_DB_DISTANCE_METHOD=cosine    # Distance method: cosine or dot
-
-# Embedding Configuration
-EMBEDDING_BACKEND=COHERE            # Embedding provider: OPENAI or COHERE
-EMBEDDING_MODEL=embed-v4.0          # Cohere embedding model
-EMBEDDING_MODEL_SIZE=256            # Embedding dimension size (256 for Cohere, 1536 for OpenAI)
-
-# Generation/LLM Configuration
-GENERATION_BACKEND=OPENAI           # Generation provider: OPENAI or COHERE
-OPENAI_API_KEY=your_openai_api_key
-OPENAI_API_URL=https://api.openai.com/v1  # Optional custom endpoint (supports local Ollama)
-COHERE_API_KEY=your_cohere_api_key
-
-# LLM Default Parameters
-INPUT_DEFAULT_MAX_CHARACTERS=16000  # Maximum input characters for prompts
-GENERATION_DEFAULT_MAX_TOKENS=1000  # Maximum tokens for generated responses
-GENERATION_DEFAULT_TEMPERATURE=0.1  # Temperature for text generation
-```
-
-### Docker Environment (.env in docker/)
-
-```bash
-# PostgreSQL Configuration
-VECTOR_PGUSER=postgres
-VECTOR_PGPASSWORD=minirag
-VECTOR_PGDB=ai_vectors
-VECTOR_PGPORT=5433
-
-# MongoDB Configuration (if needed)
-MONGO_INITDB_ROOT_USERNAME=root
-MONGO_INITDB_ROOT_PASSWORD=example
-```
-
-⚠️ **Security Note**: Change default database credentials in production!
 
 ## 📋 Prerequisites & Installation
 
@@ -550,55 +496,6 @@ CREATE INDEX ix_chunk_asset_id ON chunks(chunk_asset_id);
 - **Timestamps**: Automatic tracking of creation and update times
 - **Indexes**: Optimized for common query patterns
 
-## 🐛 Recent Fixes & Improvements
-
-### v2.0.0 Updates - PostgreSQL Migration
-
-- ✅ **Database Migration**: Migrated from MongoDB to PostgreSQL 18.0 with pgvector extension
-- ✅ **SQLAlchemy Integration**: Implemented async SQLAlchemy 2.0 with asyncpg driver
-- ✅ **Alembic Migrations**: Added database versioning and schema migration support
-- ✅ **pgvector Extension**: Enabled vector similarity search capabilities in PostgreSQL
-- ✅ **Schema Refactoring**: Proper foreign key relationships between projects, assets, and chunks
-- ✅ **Async Models**: Updated all models to use async sessionmaker patterns
-- ✅ **Database Sessions**: Fixed session management - using `self.db_client()` correctly
-- ✅ **Asset Tracking**: Implemented proper asset creation before chunk insertion
-- ✅ **Import Structure**: Unified imports through `models.db_schemas` package
-- ✅ **Type Conversion**: Fixed project_id type handling (int vs str in path operations)
-- ✅ **Connection Documentation**: Created comprehensive guides for DBeaver/pgAdmin connections
-- ✅ **Vector Dimension Validation**: Added embedding dimension mismatch detection
-- ✅ **Error Handling**: Improved NOT NULL constraint handling and clearer error messages
-
-### v1.1.0 Updates - RAG Implementation
-
-- ✅ Implemented complete RAG pipeline (Retrieval-Augmented Generation)
-- ✅ Added vector database integration with Qdrant
-- ✅ Implemented embedding generation with Cohere and OpenAI support
-- ✅ Added similarity search functionality for document retrieval
-- ✅ Implemented AI-powered answer generation with context
-- ✅ Added multi-language prompt template system
-- ✅ Support for custom OpenAI-compatible APIs (e.g., local Ollama)
-- ✅ Optimized startup performance with lazy loading
-- ✅ Added singleton TemplateParser in lifespan context
-- ✅ Fixed dimension mismatch issues between embedding providers
-- ✅ Improved error handling and logging throughout RAG pipeline
-- ✅ Added comprehensive NLP endpoints (/push, /search, /generate)
-
-### v1.0.0 Updates - Data Processing
-
-- ✅ Fixed data persistence: chunks and projects now properly saved to database
-- ✅ Implemented async factory pattern for all models
-- ✅ Added comprehensive error handling in all endpoints
-- ✅ Implemented proper schema validation with Pydantic
-- ✅ Added automatic index creation for all tables
-- ✅ Fixed asset tracking with dedicated AssetModel
-- ✅ Improved file upload with validation and error responses
-- ✅ Added project lookup before processing with 404 handling
-- ✅ Implemented batch chunk insertion for performance
-- ✅ Added LLM provider abstraction with OpenAI and Cohere support
-- ✅ Added VectorDB provider abstraction with Qdrant support
-- ✅ Implemented factory pattern for extensible provider management
-- ✅ Added comprehensive documentation and type hints across all modules
-
 ## 🧪 Testing
 
 ### Manual Testing - Complete RAG Workflow
@@ -654,54 +551,9 @@ docker exec -it vector-postgres psql -U postgres -d ai_vectors
 # Option 2: Using DBeaver (see docker/DATABASE_CONNECTIONS.md)
 ```
 
-## 🚀 Deployment
-
-### Production Considerations
-
-1. **Environment Variables**: Update all `.env` files with production values
-   - Use strong MongoDB credentials (not default root/example)
-   - Add valid API keys for OpenAI/Cohere
-   - Configure appropriate token limits and chunk sizes
-   - Set VECTOR_DB_PATH to persistent storage location
-
-2. **MongoDB**: Use MongoDB Atlas or managed service with authentication
-   - Enable authentication and encryption
-   - Configure backup and recovery procedures
-   - Set up replica sets for high availability
-
-3. **Vector Database**: Configure Qdrant for production
-   - Use persistent storage with regular backups
-   - Monitor memory usage for large collections
-   - Configure distance metrics based on embedding provider
-
-4. **Security**: 
-   - Enable HTTPS with valid SSL certificates
-   - Add CORS policies for allowed origins
-   - Implement rate limiting and request throttling
-   - Secure API keys with environment variables or secret management
-   - Add authentication/authorization for endpoints
-
-5. **Logging**: 
-   - Configure centralized logging for production monitoring
-   - Set up log rotation to manage disk space
-   - Monitor error rates and performance metrics
-   - Track embedding and generation costs
-
-6. **Docker**: 
-   - Build optimized production images with multi-stage builds
-   - Use Docker secrets for sensitive data
-   - Configure health checks and restart policies
-   - Set resource limits for containers
-
-7. **Performance**:
-   - Use connection pooling for MongoDB
-   - Cache embeddings to reduce API calls
-   - Implement async processing for large file uploads
-   - Monitor and optimize prompt sizes for LLM calls
-
 ## 📝 License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) file for details.
 
 ## 👥 Contributors
 

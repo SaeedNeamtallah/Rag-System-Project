@@ -1,3 +1,9 @@
+"""
+NLP Controller for RAG operations.
+
+Handles vector database indexing, similarity search, and answer generation
+using configurable LLM and embedding providers.
+"""
 from .BaseContoller import BaseController
 from models.db_schemas import DataChunk, Project
 from stores.llm.LLMEnums import DocumentTypeEnum
@@ -8,7 +14,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 class NLPController(BaseController):
+    """Controller for RAG workflow operations including indexing, search, and generation."""
+    
     def __init__(self, vector_client, generation_client, embedding_client, templete_parser, settings=None):
+        """Initialize NLP controller with required clients and settings."""
         super().__init__()
         self.vector_client = vector_client
         self.generation_client = generation_client
@@ -23,17 +32,20 @@ class NLPController(BaseController):
         return collection_name
     
     async def reset_vector_db_collection(self, project: Project):
+        """Delete and recreate vector database collection for a project."""
         collection_name = self.create_collection_name(project.project_id)
         await self.vector_client.delete_collection(collection_name)
         await self.vector_client.create_collection(collection_name, embedding_size=self.embedding_client.embedding_size)
 
     async def get_vector_db_collection_info(self, project: Project):
+        """Get information about vector database collection."""
         collection_name = self.create_collection_name(project.project_id)
         collection_info = await self.vector_client.get_collection_info(collection_name)
 
         return json.loads(json.dumps(collection_info, default=lambda o: o.__dict__))
 
     async def index_into_vector_db(self, project: Project, chunks: List[DataChunk], chunk_ids: List[int], do_reset: bool = False):
+        """Generate embeddings and index chunks into vector database."""
         collection_name = self.create_collection_name(project.project_id)
         vectors = []
         ids = []
@@ -82,6 +94,7 @@ class NLPController(BaseController):
         }
     
     async def search_vector_db(self, project: Project, text: str, limit: int = 5):
+        """Search for similar documents in vector database."""
         collection_name = self.create_collection_name(project.project_id)
         query_embedding = self.embedding_client.embed_text(text, document_type=DocumentTypeEnum.QUERY.value)
         search_results = await self.vector_client.search_by_vector(
@@ -92,6 +105,7 @@ class NLPController(BaseController):
         return search_results
     
     async def answer_rag_question(self, project: Project, query: str, limit: int = 5):
+        """Generate answer using RAG: retrieve context and generate response with LLM."""
         # step1: search vector db
         search_results = await self.search_vector_db(project, query, limit)
         if not search_results:
