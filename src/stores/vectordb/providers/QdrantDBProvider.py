@@ -29,44 +29,44 @@ class QdrantDBProvider(VectorDBInterface):
 
         self.logger = logging.getLogger(__name__)
 
-    def connect(self):
+    async def connect(self):
         """Connect to Qdrant database."""
         self.client = QdrantClient(path=self.db_path)
 
-    def disconnect(self):
+    async def disconnect(self):
         """Disconnect from Qdrant database."""
         if self.client:
             self.client.close()
             self.client = None
 
-    def is_collection_existed(self, collection_name: str) -> bool:
+    async def is_collection_existed(self, collection_name: str) -> bool:
         """Check if a collection exists."""
         return self.client.collection_exists(collection_name=collection_name)
 
-    def list_all_collections(self) -> list:
+    async def list_all_collections(self) -> list:
         """List all collection names."""
         collections = self.client.get_collections()
         return [collection.name for collection in collections.collections]
 
-    def get_collection_info(self, collection_name: str):
+    async def get_collection_info(self, collection_name: str):
         """Get information about a collection."""
         return self.client.get_collection(collection_name=collection_name)
 
-    def delete_collection(self, collection_name: str):
+    async def delete_collection(self, collection_name: str):
         """Delete a collection. Safely handles non-existent collections."""
         try:
-            if self.is_collection_existed(collection_name):
+            if await self.is_collection_existed(collection_name):
                 self.client.delete_collection(collection_name=collection_name)
                 self.logger.info(f"Successfully deleted collection: {collection_name}")
         except Exception as e:
             self.logger.warning(f"Error deleting collection {collection_name}: {e}")
 
-    def create_collection(self, collection_name: str, embedding_size: int, do_reset: bool = False):
+    async def create_collection(self, collection_name: str, embedding_size: int, do_reset: bool = False):
         """Create a new collection. Optionally reset if exists."""
-        if do_reset and self.is_collection_existed(collection_name):
-            self.delete_collection(collection_name)
+        if do_reset and await self.is_collection_existed(collection_name):
+            await self.delete_collection(collection_name)
 
-        if not self.is_collection_existed(collection_name):
+        if not await self.is_collection_existed(collection_name):
             self.client.create_collection(
                 collection_name=collection_name,
                 vectors_config=models.VectorParams(
@@ -78,9 +78,9 @@ class QdrantDBProvider(VectorDBInterface):
 
         return False
 
-    def insert_one(self, collection_name: str, text: str, vector: list, metadata: dict = None, record_id: str = None):
+    async def insert_one(self, collection_name: str, text: str, vector: list, metadata: dict = None, record_id: str = None):
         """Insert a single record into collection."""
-        if not self.is_collection_existed(collection_name):
+        if not await self.is_collection_existed(collection_name):
             self.logger.error(f"Collection {collection_name} does not exist.")
             return False
 
@@ -100,9 +100,9 @@ class QdrantDBProvider(VectorDBInterface):
 
         return True
 
-    def insert_many(self, collection_name: str, texts: list, vectors: list, metadata: list = None, record_ids: list = None, batch_size: int = 50):
+    async def insert_many(self, collection_name: str, texts: list, vectors: list, metadata: list = None, record_ids: list = None, batch_size: int = 50):
         """Insert multiple records into collection in batches."""
-        if not self.is_collection_existed(collection_name):
+        if not await self.is_collection_existed(collection_name):
             self.logger.error(f"Collection {collection_name} does not exist.")
             return False
 
@@ -135,10 +135,10 @@ class QdrantDBProvider(VectorDBInterface):
 
         return True
 
-    def search_by_vector(self, collection_name: str, vector: list, limit: int):
+    async def search_by_vector(self, collection_name: str, vector: list, limit: int):
         """Search for similar vectors in collection."""
-        if not self.is_collection_existed(collection_name):
-            self.logger.error(f"Collection {collection_name} does not exist. Available collections: {self.list_all_collections()}")
+        if not await self.is_collection_existed(collection_name):
+            self.logger.error(f"Collection {collection_name} does not exist. Available collections: {await self.list_all_collections()}")
             return None
 
         try:

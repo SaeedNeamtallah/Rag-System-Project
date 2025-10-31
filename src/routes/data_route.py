@@ -99,28 +99,6 @@ async def process_all_files(request: Request, project_id: int):
             content={"status": "no_files_found", "message": "No files found in the project."}
         )
     
-    all_chunks = []
-    failed_files = []
-    for file_name in all_files:
-        file_path = data_controller.get_file_path(project_id, file_name)
-        try:
-            chunks = process_controller.process_document(file_path)
-            all_chunks.extend(chunks)
-        except Exception as e:
-            logging.error(f"Error processing file {file_name}: {e}")
-            failed_files.append({"file": file_name, "error": str(e)})
-            continue  # Skip files that cause errors
-    
-    if not all_chunks:
-        return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content={
-                "status": "processing_failed", 
-                "message": "Failed to process any files. All files are either empty or invalid.",
-                "failed_files": failed_files
-            }
-        )
-    
     # Get the project's ObjectId for chunk references
     project_object_id = project.project_id if hasattr(project, 'project_id') and project.project_id else None
     if not project_object_id:
@@ -130,17 +108,71 @@ async def process_all_files(request: Request, project_id: int):
             content={"status": "error", "message": "Project ObjectId not found."}
         )
     
-    # Convert langchain Document objects to DataChunk objects
-    file_chunks = [DataChunk(
-        chunk_text=chunk.page_content,
-        chunk_metadata=chunk.metadata,
-        chunk_order=idx + 1,
-        chunk_project_id=project_object_id
-    ) for idx, chunk in enumerate(all_chunks)]
-
-    chunk_model = await ChunkModel.create_instance(db=request.app.state.async_session)
-    inserted_chunks = await chunk_model.insert_many_chunks(file_chunks)
-    logging.info(f"Inserted {len(inserted_chunks)} chunks into the database")
+    asset_model = await AssetModel.create_instance(request.app.state.async_session)
+    chunk_model = await ChunkModel.create_instance(request.app.state.async_session)
+    
+    all_chunks_data = []
+    failed_files = []
+    total_inserted_chunks = 0
+    
+    # Process each file separately to maintain asset association
+    for file_name in all_files:
+        file_path = data_controller.get_file_path(project_id, file_name)
+        
+        try:
+            # Process the document to get chunks
+            chunks = process_controller.process_document(file_path)
+            
+            if not chunks:
+                logging.warning(f"No chunks extracted from file {file_name}")
+                continue
+            
+            # Get file size
+            file_size = os.path.getsize(file_path)
+            
+            # Determine file type from extension
+            file_extension = os.path.splitext(file_name)[1].lower()
+            
+            # Create Asset record for this file
+            asset = Asset(
+                asset_type=file_extension.lstrip('.'),
+                asset_name=file_name,
+                asset_size=file_size,
+                asset_config={"source": file_path},
+                asset_project_id=project_object_id
+            )
+            created_asset = await asset_model.create_asset(asset)
+            
+            # Convert langchain Document objects to DataChunk objects with asset_id
+            file_chunks = [DataChunk(
+                chunk_text=chunk.page_content,
+                chunk_metadata=chunk.metadata,
+                chunk_order=idx + 1,
+                chunk_project_id=project_object_id,
+                chunk_asset_id=created_asset.asset_id
+            ) for idx, chunk in enumerate(chunks)]
+            
+            # Insert chunks for this file (returns count as integer)
+            inserted_count = await chunk_model.insert_many_chunks(file_chunks)
+            total_inserted_chunks += inserted_count
+            all_chunks_data.extend([{"page_content": chunk.page_content, "metadata": chunk.metadata} for chunk in chunks])
+            
+            # logging.info(f"Processed file {file_name}: {inserted_count} chunks inserted with asset_id={created_asset.asset_id}")
+            
+        except Exception as e:
+            logging.error(f"Error processing file {file_name}: {e}", exc_info=True)
+            failed_files.append({"file": file_name, "error": str(e)})
+            continue  # Skip files that cause errors
+    
+    if total_inserted_chunks == 0:
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={
+                "status": "processing_failed", 
+                "message": "Failed to process any files. All files are either empty or invalid.",
+                "failed_files": failed_files
+            }
+        )
     
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -149,10 +181,10 @@ async def process_all_files(request: Request, project_id: int):
             "total_files": len(all_files),
             "processed_files": len(all_files) - len(failed_files),
             "failed_files": len(failed_files),
-            "total_chunks": len(all_chunks),
-            "inserted_chunks": len(inserted_chunks),
+            "total_chunks": len(all_chunks_data),
+            "inserted_chunks": total_inserted_chunks,
             "failed_file_details": failed_files if failed_files else [],
-            "chunks": [ {"page_content": chunk.page_content, "metadata": chunk.metadata} for chunk in all_chunks ]
+            "chunks": all_chunks_data
 
         }
     )
@@ -176,7 +208,7 @@ async def process_one_file(request: Request, project_id: int, body: ProcessFileR
         )
 
 
-    logging.info(f"Processing one file request for project_id: {project_id}, file_name: {file_name}")
+    # logging.info(f"Processing one file request for project_id: {project_id}, file_name: {file_name}")
     data_controller = DataController()
     process_controller = ProcessControllers()
 
@@ -198,7 +230,7 @@ async def process_one_file(request: Request, project_id: int, body: ProcessFileR
         )
     
     try:
-        logging.info(f"Starting to process document: {file_path}")
+        # logging.info(f"Starting to process document: {file_path}")
         chunks = process_controller.process_document(file_path, chunk_size, overlap_size)
     except Exception as e:
         logging.error(f"Error processing file {file_name}: {e}")
@@ -244,7 +276,7 @@ async def process_one_file(request: Request, project_id: int, body: ProcessFileR
             asset_size=os.path.getsize(file_path)
         )
         asset_record = await asset_model.create_asset(asset_record)
-        logging.info(f"Created new asset record for file: {file_name}, asset_id: {asset_record.asset_id}")
+        # logging.info(f"Created new asset record for file: {file_name}, asset_id: {asset_record.asset_id}")
     else:
         logging.info(f"Using existing asset record for file: {file_name}, asset_id: {asset_record.asset_id}")
     
@@ -254,7 +286,7 @@ async def process_one_file(request: Request, project_id: int, body: ProcessFileR
         chunk_order=idx + 1,
         chunk_project_id=project_object_id,
         chunk_asset_id=asset_record.asset_id
-    ) for idx, chunk in enumerate(chunks)]
+                                            ) for idx, chunk in enumerate(chunks)]
 
     chunk_model = await ChunkModel.create_instance(request.app.state.async_session)
     
@@ -262,13 +294,13 @@ async def process_one_file(request: Request, project_id: int, body: ProcessFileR
     if do_reset:
         # Delete by project's ObjectId, not the string project_id
         deleted_count = await chunk_model.del_chunks_by_project_id(project_object_id)
-        logging.info(f"Deleted {deleted_count} existing chunks for project_id: {project_id} due to reset request.")
+        # logging.info(f"Deleted {deleted_count} existing chunks for project_id: {project_id} due to reset request.")
 
     inserted_chunks = await chunk_model.insert_many_chunks(file_chunks)
-    logging.info(f"Inserted {inserted_chunks} chunks into the database for file: {file_name}")
+    # logging.info(f"Inserted {inserted_chunks} chunks into the database for file: {file_name}")
 
 
-    logging.info(f"Successfully processed file {file_name}, created {len(chunks)} chunks.")
+    # logging.info(f"Successfully processed file {file_name}, created {len(chunks)} chunks.")
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content={

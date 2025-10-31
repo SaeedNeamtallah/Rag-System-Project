@@ -50,11 +50,6 @@ class OpenAIProvider(LLMInterface):
         
         user_message = self.construct_prompt(prompt, role=OpenAIEnums.USER.value)
         messages = chat_history + [user_message]
-        
-        self.logger.info(f"Chat history length: {len(chat_history)}")
-        self.logger.info(f"User message content length: {len(user_message.get('content', ''))}")
-        self.logger.info(f"User message preview: {user_message.get('content', '')[:200]}...")
-        self.logger.info(f"Total messages count: {len(messages)}")
 
         response = self.client.chat.completions.create(
             model=self.generation_model,

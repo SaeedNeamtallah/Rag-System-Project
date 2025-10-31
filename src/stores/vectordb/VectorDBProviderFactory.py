@@ -1,6 +1,7 @@
 """VectorDB Provider Factory for creating vector database instances."""
 
 from .providers.QdrantDBProvider import QdrantDBProvider
+from .providers.PGVectorProvider import PGVectorProvider
 from .VectorDBEnums import VectorDBEnums
 from controllers.BaseContoller import BaseController
 import logging
@@ -27,6 +28,21 @@ class VectorDBProviderFactory:
             distance_method = self.config.VECTOR_DB_DISTANCE_METHOD
 
             return QdrantDBProvider(db_path, distance_method)
+        
+        elif provider_name == VectorDBEnums.PGVECTOR.value:
+            # PGVector uses the PostgreSQL database client
+            # Access db_client from app.state (will be set during initialization)
+            distance_method = self.config.VECTOR_DB_DISTANCE_METHOD
+            default_vector_size = getattr(self.config, 'EMBEDDING_MODEL_SIZE', 1024)
+            index_threshold = getattr(self.config, 'PGVECTOR_INDEX_THRESHOLD', 100)
+            
+            # Note: db_client will be set after factory creation
+            return PGVectorProvider(
+                db_client=None,  # Will be set later by main.py
+                default_vector_size=default_vector_size,
+                distance_method=distance_method,
+                index_threshold=index_threshold
+            )
 
         else:
             raise ValueError(f"Unsupported VectorDB provider: {provider_name}")
